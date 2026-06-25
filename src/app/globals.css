@@ -1,26 +1,74 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Base surfaces — quiet, slightly warm neutrals (not pure slate) */
+  --background: #fafaf9;
+  --foreground: #18181b;
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --border: #e7e5e4;
+  --input: #e7e5e4;
+  --muted: #f4f4f3;
+  --muted-foreground: #71717a;
+
+  /* Brand — deliberate indigo, used with restraint (primary actions only) */
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f3;
+  --secondary-foreground: #18181b;
+  --accent: #eef2ff;
+  --accent-foreground: #4338ca;
+  --ring: #4f46e5;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --radius: 0.625rem;
+
+  /* Semantic status colors — the signature system, used across Kanban,
+     badges, and priority indicators so the same color always means the
+     same thing everywhere in the app */
+  --status-backlog: #94a3b8;
+  --status-todo: #64748b;
+  --status-in-progress: #2563eb;
+  --status-review: #d97706;
+  --status-done: #16a34a;
+
+  --priority-low: #65a30d;
+  --priority-medium: #ca8a04;
+  --priority-high: #ea580c;
+  --priority-urgent: #dc2626;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+* {
+  border-color: var(--border);
 }
