@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/dashboard/sidebar.tsx (overwrite entire file)
 "use client";
 
 import Link from "next/link";
@@ -15,7 +14,7 @@ const NAV_ITEMS = [
   { href: "/settings/members",  label: "Settings",   icon: Settings        },
 ];
 
-export function Sidebar() {
+export function Sidebar({ }: { organizationName?: string }) {
   const pathname = usePathname();
 
   return (
