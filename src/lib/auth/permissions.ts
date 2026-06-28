@@ -47,12 +47,15 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "analytics:view", "audit:view",
   ],
 
-  MANAGER: [
-    "members:invite",
+// PASTE LOCATION: src/lib/auth/permissions.ts
+// Find the MANAGER block (around line 30) and replace ONLY that block:
+
+ MANAGER: [
     "project:create", "project:update", "project:delete", "project:archive",
     "task:create", "task:update", "task:delete", "task:assign",
     "comment:create", "comment:delete",
     "file:upload", "file:delete",
+    "analytics:view",
   ],
 
   DEVELOPER: [

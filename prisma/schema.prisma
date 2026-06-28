@@ -129,6 +129,7 @@ model User {
   auditLogs     AuditLog[]
   invitationsSent Invitation[] @relation("InvitedBy")
   files         File[]
+  timeEntries   TimeEntry[]
 
   @@index([email])
 }
@@ -261,6 +262,9 @@ model Task {
   creator  User      @relation("TaskCreator", fields: [creatorId], references: [id])
   comments Comment[]
   files    File[]
+  subtasks       SubTask[]
+  checklistItems ChecklistItem[]
+  timeEntries    TimeEntry[]
   labels   TaskLabel[]
 
   @@index([tenantId])
@@ -392,4 +396,47 @@ model Subscription {
 
   @@index([stripeCustomerId])
   @@index([stripeSubscriptionId])
+}
+
+model SubTask {
+  id        String   @id @default(cuid())
+  taskId    String
+  title     String
+  completed Boolean  @default(false)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+model ChecklistItem {
+  id        String   @id @default(cuid())
+  taskId    String
+  title     String
+  checked   Boolean  @default(false)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+model TimeEntry {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  minutes   Int
+  note      String?  @db.Text
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([taskId])
+  @@index([userId])
 }

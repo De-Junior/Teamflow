@@ -1,114 +1,96 @@
 // PASTE LOCATION: src/components/tasks/kanban-board.tsx (overwrite entire file)
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent,
 } from "@dnd-kit/core";
-import { KanbanColumn } from "@/components/tasks/kanban-column";
+import { arrayMove }       from "@dnd-kit/sortable";
+import { KanbanColumn }    from "@/components/tasks/kanban-column";
 import { TaskCard, type TaskCardData } from "@/components/tasks/task-card";
 
 const COLUMNS = [
-  { status: "BACKLOG",     label: "Backlog" },
-  { status: "TODO",        label: "To do" },
+  { status: "BACKLOG",     label: "Backlog"     },
+  { status: "TODO",        label: "To do"       },
   { status: "IN_PROGRESS", label: "In progress" },
-  { status: "REVIEW",      label: "Review" },
-  { status: "DONE",        label: "Done" },
+  { status: "REVIEW",      label: "Review"      },
+  { status: "DONE",        label: "Done"        },
 ];
+const CAN_DRAG = ["SUPER_ADMIN","OWNER","MANAGER","DEVELOPER"];
 
-export function KanbanBoard({
-  projectId,
-  initialTasks,
-  userRole,
-}: {
-  projectId: string;
-  initialTasks: TaskCardData[];
-  userRole?: string;
+export function KanbanBoard({ projectId, initialTasks, userRole, onTaskClick, onTaskDeleted, onTaskMarkedDone, onTaskCreated }: {
+  projectId:        string;
+  initialTasks:     TaskCardData[];
+  userRole:         string;
+  onTaskClick?:     (id: string) => void;
+  onTaskDeleted?:   (id: string) => void;
+  onTaskMarkedDone?:(id: string) => void;
+  onTaskCreated?:   () => void;
 }) {
-  const router = useRouter();
-  const [tasks, setTasks] = useState<TaskCardData[]>(initialTasks);
+  const canDrag = CAN_DRAG.includes(userRole);
+  const [tasks,      setTasks]      = useState<TaskCardData[]>(initialTasks);
   const [activeTask, setActiveTask] = useState<TaskCardData | null>(null);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setTasks(initialTasks); }, [initialTasks]);
 
-  useEffect(() => {
-    function onVisibilityChange() {
-      if (!document.hidden) router.refresh();
-    }
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, [router]);
+  const sensors = useSensors(useSensor(PointerSensor, {
+    activationConstraint: { distance: canDrag ? 4 : Infinity },
+  }));
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
-  );
-
-  function handleDragStart(event: DragStartEvent) {
-    setActiveTask(tasks.find((t) => t.id === event.active.id) ?? null);
+  function handleDragStart(e: DragStartEvent) {
+    if (!canDrag) return;
+    setActiveTask(tasks.find(t => t.id === e.active.id) ?? null);
   }
 
-  async function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
+  async function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
     setActiveTask(null);
-    if (!over) return;
+    if (!over || !canDrag) return;
 
-    const activeTaskItem = tasks.find((t) => t.id === active.id);
-    if (!activeTaskItem) return;
+    const activeItem = tasks.find(t => t.id === active.id);
+    if (!activeItem) return;
 
-    const overData = over.data.current as { type?: string; status?: string } | undefined;
-    const overTask = tasks.find((t) => t.id === over.id);
+    const overData     = over.data.current as { type?: string; status?: string } | undefined;
+    const overTask     = tasks.find(t => t.id === over.id);
     const targetStatus = overData?.type === "column" ? overData.status! : overTask?.status;
     if (!targetStatus) return;
 
-    const sourceStatus = activeTaskItem.status;
-    const withoutActive = tasks.filter((t) => t.id !== active.id);
+    const srcStatus = activeItem.status;
+    let newTasks: TaskCardData[];
 
-    const targetColumnTasks = withoutActive.filter((t) => t.status === targetStatus);
-    const overIndex = targetColumnTasks.findIndex((t) => t.id === over.id);
-    const insertAt = overIndex === -1 ? targetColumnTasks.length : overIndex;
-    targetColumnTasks.splice(insertAt, 0, { ...activeTaskItem, status: targetStatus });
+    if (srcStatus === targetStatus) {
+      const col  = tasks.filter(t => t.status === srcStatus);
+      const rest = tasks.filter(t => t.status !== srcStatus);
+      const oi   = col.findIndex(t => t.id === active.id);
+      const ni   = col.findIndex(t => t.id === over.id);
+      if (oi === ni) return;
+      newTasks = [...rest, ...arrayMove(col, oi, ni)];
+    } else {
+      const without   = tasks.filter(t => t.id !== active.id);
+      const tgtCol    = without.filter(t => t.status === targetStatus);
+      const srcCol    = without.filter(t => t.status === srcStatus);
+      const rest      = without.filter(t => t.status !== targetStatus && t.status !== srcStatus);
+      const oi        = tgtCol.findIndex(t => t.id === over.id);
+      const insertAt  = oi === -1 ? tgtCol.length : oi;
+      const newTgtCol = [...tgtCol.slice(0,insertAt), { ...activeItem, status: targetStatus }, ...tgtCol.slice(insertAt)];
+      newTasks = [...rest, ...newTgtCol, ...srcCol];
+    }
 
-    const sourceColumnTasks =
-      sourceStatus !== targetStatus
-        ? withoutActive.filter((t) => t.status === sourceStatus)
-        : [];
+    setTasks(newTasks);
 
-    const otherTasks = withoutActive.filter(
-      (t) => t.status !== targetStatus && t.status !== sourceStatus
-    );
-
-    setTasks([...otherTasks, ...targetColumnTasks, ...sourceColumnTasks]);
-
-    const updates = [
-      ...targetColumnTasks.map((t, position) => ({ id: t.id, status: targetStatus, position })),
-      ...(sourceStatus !== targetStatus
-        ? sourceColumnTasks.map((t, position) => ({ id: t.id, status: sourceStatus, position }))
-        : []),
-    ];
+    const tgtUpdates = newTasks.filter(t=>t.status===targetStatus).map((t,i)=>({ id:t.id, status:targetStatus, position:i }));
+    const srcUpdates = srcStatus !== targetStatus
+      ? newTasks.filter(t=>t.status===srcStatus).map((t,i)=>({ id:t.id, status:srcStatus, position:i }))
+      : [];
 
     try {
-      const res = await fetch("/api/tasks/reorder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tasks: updates }),
+      await fetch("/api/tasks/reorder", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tasks: [...tgtUpdates, ...srcUpdates] }),
       });
-      if (!res.ok) {
-        router.refresh();
-      }
-    } catch {
-      router.refresh();
-    }
-  }
-
-  function handleTaskDeleted(taskId: string) {
-    setTasks((prev) => prev.filter((t) => t.id !== taskId));
-  }
-
-  function handleTaskMarkedDone(taskId: string) {
-    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: "DONE" } : t)));
+    } catch { /* best-effort */ }
   }
 
   return (
@@ -116,20 +98,18 @@ export function KanbanBoard({
       <div className="flex gap-4 overflow-x-auto pb-4">
         {COLUMNS.map(({ status, label }) => (
           <KanbanColumn
-            key={status}
-            status={status}
-            label={label}
-            projectId={projectId}
-            tasks={tasks.filter((t) => t.status === status)}
-            onTaskCreated={() => router.refresh()}
-            userRole={userRole}
-            onTaskDeleted={handleTaskDeleted}
-            onTaskMarkedDone={handleTaskMarkedDone}
+            key={status} status={status} label={label}
+            projectId={projectId} userRole={userRole}
+            tasks={tasks.filter(t => t.status === status)}
+            onTaskCreated={onTaskCreated ?? (() => {})}
+            onTaskDeleted={onTaskDeleted ?? (() => {})}
+            onTaskMarkedDone={onTaskMarkedDone ?? (() => {})}
+            onTaskClick={onTaskClick}
           />
         ))}
       </div>
       <DragOverlay>
-        {activeTask && <TaskCard task={activeTask} isOverlay />}
+        {activeTask && <TaskCard task={activeTask} isOverlay userRole={userRole} />}
       </DragOverlay>
     </DndContext>
   );

@@ -1,64 +1,73 @@
-// PASTE LOCATION: src/app/(dashboard)/projects/page.tsx
+// PASTE LOCATION: src/app/(dashboard)/projects/page.tsx (overwrite entire file)
 import { auth } from "@/lib/auth";
 import { projectRepository } from "@/lib/db/tenant";
-import { ProjectCard } from "@/components/projects/project-card";
-import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
-import { FolderKanban } from "lucide-react";
+import { hasPermission } from "@/lib/auth/permissions";
+import { Role } from "@prisma/client";
+import { ProjectsClient } from "@/components/projects/projects-client";
 
 export default async function ProjectsPage() {
   const session = await auth();
   const ctx = {
-    tenantId: session!.user.tenantId,
+    tenantId:       session!.user.tenantId,
     organizationId: session!.user.organizationId,
-    userId: session!.user.id,
+    userId:         session!.user.id,
   };
 
-  const projects = await projectRepository(ctx).findMany({
-    orderBy: { createdAt: "desc" },
-    include: { _count: { select: { tasks: true } } },
-  });
+  const userRole   = session!.user.role as Role;
+  const canCreate  = hasPermission(userRole, "project:create");
+  const canDelete  = hasPermission(userRole, "project:delete");
+  const canUpdate  = hasPermission(userRole, "project:update");
+  const canArchive = hasPermission(userRole, "project:archive");
+
+  let projects: ReturnType<typeof buildSerialized> = [];
+
+  try {
+    const raw = await projectRepository(ctx).findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        _count: { select: { tasks: true } },
+        tasks: {
+          select: {
+            status:   true,
+            assignee: { select: { id: true, name: true, image: true } },
+          },
+        },
+      },
+    });
+    projects = buildSerialized(raw);
+  } catch { /* DB unavailable — render empty state */ }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Projects</h1>
-          <p className="text-sm text-muted-foreground">
-            {projects.length === 0
-              ? "Create your first project to get started."
-              : `${projects.length} ${projects.length === 1 ? "project" : "projects"}`}
-          </p>
-        </div>
-        <CreateProjectDialog />
-      </div>
-
-      {projects.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-16 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent">
-            <FolderKanban className="size-6 text-accent-foreground" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-foreground">No projects yet</p>
-            <p className="text-sm text-muted-foreground">
-              Get your team organized by creating a project.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {projects.map((project: (typeof projects)[number]) => (
-            <ProjectCard
-              key={project.id}
-              id={project.id}
-              name={project.name}
-              description={project.description}
-              status={project.status}
-              priority={project.priority}
-              taskCount={project._count.tasks}
-            />
-          ))}
-        </div>
-      )}
-    </div>
+    <ProjectsClient
+      projects={projects}
+      canCreate={canCreate}
+      canDelete={canDelete}
+      canUpdate={canUpdate}
+      canArchive={canArchive}
+    />
   );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildSerialized(raw: any[]) {
+  return raw.map((p) => ({
+    id:          p.id          as string,
+    name:        p.name        as string,
+    description: (p.description ?? null) as string | null,
+    status:      p.status      as string,
+    priority:    p.priority    as string,
+    dueDate:     p.dueDate     ? (p.dueDate as Date).toISOString() : null,
+    createdAt:   (p.createdAt  as Date).toISOString(),
+    updatedAt:   (p.updatedAt  as Date).toISOString(),
+    taskCount:   p._count.tasks as number,
+    doneCount:   (p.tasks as { status: string }[]).filter((t) => t.status === "DONE").length,
+    members: Array.from(
+      new Map(
+        (p.tasks as { assignee: { id: string; name: string | null; image: string | null } | null }[])
+          .map((t) => t.assignee)
+          .filter((a): a is NonNullable<typeof a> => a !== null)
+          .map((a) => [a.id, a])
+      ).values()
+    ).slice(0, 4) as { id: string; name: string | null; image: string | null }[],
+  }));
 }

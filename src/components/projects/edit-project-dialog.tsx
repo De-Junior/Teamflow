@@ -1,11 +1,11 @@
-// PASTE LOCATION: src/components/projects/create-project-dialog.tsx (overwrite entire file)
+// PASTE LOCATION: src/components/projects/edit-project-dialog.tsx (create new file)
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { createProjectSchema, type CreateProjectFormInput } from "@/validations/project";
+import { z } from "zod";
+import { Priority, ProjectStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,73 +15,75 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
-  DialogDescription, DialogFooter, DialogTrigger,
+  DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus } from "lucide-react";
 import type { ProjectData } from "./project-card";
 
-export function CreateProjectDialog({
-  onCreated,
+// Local schema — accepts "YYYY-MM-DD" from date input (converted to ISO before API call)
+const editSchema = z.object({
+  name:        z.string().min(1, "Project name is required").max(100),
+  description: z.string().max(2000).optional(),
+  status:      z.nativeEnum(ProjectStatus),
+  priority:    z.nativeEnum(Priority),
+  dueDate:     z.string().optional().nullable(),
+});
+
+type EditFormValues = z.infer<typeof editSchema>;
+
+export function EditProjectDialog({
+  project, open, onClose, onUpdated,
 }: {
-  onCreated?: (project: ProjectData) => void;
+  project:   ProjectData;
+  open:      boolean;
+  onClose:   () => void;
+  onUpdated: (updated: Partial<ProjectData> & { id: string }) => void;
 }) {
-  const router = useRouter();
-  const [open,         setOpen]         = useState(false);
   const [serverError,  setServerError]  = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { register, handleSubmit, control, reset, formState: { errors } } =
-    useForm<CreateProjectFormInput>({
-      resolver: zodResolver(createProjectSchema),
-      defaultValues: { status: "ACTIVE", priority: "MEDIUM" },
+  const { register, handleSubmit, control, formState: { errors } } =
+    useForm<EditFormValues>({
+      resolver: zodResolver(editSchema),
+      defaultValues: {
+        name:        project.name,
+        description: project.description ?? "",
+        status:      project.status   as ProjectStatus,
+        priority:    project.priority as Priority,
+        dueDate:     project.dueDate  ? project.dueDate.slice(0, 10) : "",
+      },
     });
 
-  async function onSubmit(values: CreateProjectFormInput) {
+  async function onSubmit(values: EditFormValues) {
     setServerError(null);
     setIsSubmitting(true);
 
-    // Convert "YYYY-MM-DD" → ISO if dueDate came from a date input
+    // Convert "YYYY-MM-DD" → ISO datetime that the API schema expects
     const body = {
       ...values,
       dueDate: values.dueDate
-        ? new Date((values.dueDate as string).length === 10
-            ? (values.dueDate as string) + "T00:00:00.000Z"
-            : (values.dueDate as string)
-          ).toISOString()
+        ? new Date(values.dueDate + "T00:00:00.000Z").toISOString()
         : null,
     };
 
     try {
-      const res  = await fetch("/api/projects", {
-        method:  "POST",
+      const res  = await fetch(`/api/projects/${project.id}`, {
+        method:  "PATCH",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify(body),
       });
       const json = await res.json();
-
       if (!json.success) { setServerError(json.message); return; }
 
-      setOpen(false);
-      reset();
-
-      if (onCreated) {
-        const d = json.data;
-        onCreated({
-          id:          d.id,
-          name:        d.name,
-          description: d.description ?? null,
-          status:      d.status,
-          priority:    d.priority,
-          dueDate:     d.dueDate ? new Date(d.dueDate).toISOString() : null,
-          createdAt:   new Date(d.createdAt).toISOString(),
-          updatedAt:   new Date(d.updatedAt).toISOString(),
-          taskCount:   0,
-          doneCount:   0,
-          members:     [],
-        });
-      } else {
-        router.refresh();
-      }
+      onUpdated({
+        id:          project.id,
+        name:        values.name,
+        description: values.description ?? null,
+        status:      values.status,
+        priority:    values.priority,
+        dueDate:     body.dueDate,
+        updatedAt:   new Date().toISOString(),
+      });
+      onClose();
     } catch {
       setServerError("Something went wrong. Please try again.");
     } finally {
@@ -90,14 +92,7 @@ export function CreateProjectDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>
-          <Plus className="size-4" />
-          New project
-        </Button>
-      </DialogTrigger>
-
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent
         onInteractOutside={(e) => {
           const target = e.target as HTMLElement;
@@ -105,22 +100,20 @@ export function CreateProjectDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>Create a new project</DialogTitle>
-          <DialogDescription>
-            Projects organize your team&apos;s tasks. You can change these details later.
-          </DialogDescription>
+          <DialogTitle>Edit project</DialogTitle>
+          <DialogDescription>Update &quot;{project.name}&quot;.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="name">Name</Label>
-            <Input id="name" placeholder="Website redesign" {...register("name")} />
+            <Label htmlFor="edit-name">Name</Label>
+            <Input id="edit-name" {...register("name")} />
             {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="description">Description</Label>
-            <Textarea id="description" placeholder="What's this project about?" {...register("description")} />
+            <Label htmlFor="edit-desc">Description</Label>
+            <Textarea id="edit-desc" rows={3} {...register("description")} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -159,8 +152,8 @@ export function CreateProjectDialog({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="dueDate">Due date <span className="text-muted-foreground">(optional)</span></Label>
-            <Input id="dueDate" type="date" {...register("dueDate")} />
+            <Label htmlFor="edit-due">Due date</Label>
+            <Input id="edit-due" type="date" {...register("dueDate")} />
           </div>
 
           {serverError && (
@@ -170,8 +163,9 @@ export function CreateProjectDialog({
           )}
 
           <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Creating…" : "Create project"}
+              {isSubmitting ? "Saving…" : "Save changes"}
             </Button>
           </DialogFooter>
         </form>

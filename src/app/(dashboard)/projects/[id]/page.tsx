@@ -1,101 +1,81 @@
 // PASTE LOCATION: src/app/(dashboard)/projects/[id]/page.tsx (overwrite entire file)
-import Link from "next/link";
-import { notFound } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { notFound }          from "next/navigation";
+import { auth }              from "@/lib/auth";
 import { projectRepository } from "@/lib/db/tenant";
-import { hasPermission } from "@/lib/auth/permissions";
-import { KanbanBoardLoader } from "@/components/tasks/kanban-board-loader";
-import { DeleteProjectButton } from "@/components/projects/delete-project-button";
-import { KanbanDoneButton } from "@/components/tasks/kanban-done-button";
-import { cn } from "@/lib/utils";
-import { ArrowLeft } from "lucide-react";
-import type { Role } from "@prisma/client";
+import { prisma }            from "@/lib/db/prisma";
+import { ProjectView }       from "@/components/projects/project-view";
+import Link                  from "next/link";
+import { ArrowLeft }         from "lucide-react";
 
-const PRIORITY_STYLES: Record<string, string> = {
-  LOW: "bg-[var(--priority-low)]/10 text-[var(--priority-low)]",
-  MEDIUM: "bg-[var(--priority-medium)]/10 text-[var(--priority-medium)]",
-  HIGH: "bg-[var(--priority-high)]/10 text-[var(--priority-high)]",
-  URGENT: "bg-[var(--priority-urgent)]/10 text-[var(--priority-urgent)]",
-};
-
-export default async function ProjectDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await auth();
   const ctx = {
-    tenantId: session!.user.tenantId,
+    tenantId:       session!.user.tenantId,
     organizationId: session!.user.organizationId,
-    userId: session!.user.id,
+    userId:         session!.user.id,
   };
 
-  const project = await projectRepository(ctx).findById(id, {
-    include: {
-      tasks: {
-        orderBy: { position: "asc" },
-        include: {
-          assignee: { select: { id: true, name: true, image: true } },
+  const [project, memberships] = await Promise.all([
+    projectRepository(ctx).findById(id, {
+      include: {
+        tasks: {
+          orderBy: { position: "asc" },
+          include: {
+            assignee: { select: { id: true, name: true, image: true } },
+            labels:   true,
+            _count:   { select: { comments: true, subtasks: true, checklistItems: true } },
+          },
         },
       },
-    },
-  });
+    }),
+    prisma.membership.findMany({
+      where:   { tenantId: ctx.tenantId },
+      include: { user: { select: { id: true, name: true, image: true } } },
+    }),
+  ]);
 
-  if (!project) {
-    notFound();
-  }
+  if (!project) notFound();
 
-  const tasks = project.tasks.map((task: (typeof project.tasks)[number]) => ({
-    id: task.id,
-    title: task.title,
-    description: task.description,
-    priority: task.priority,
-    status: task.status,
-    dueDate: task.dueDate ? task.dueDate.toISOString() : null,
-    assignee: task.assignee,
+  const tasks = project.tasks.map((t: (typeof project.tasks)[number]) => ({
+    id:          t.id,
+    title:       t.title,
+    description: t.description ?? null,
+    priority:    t.priority   as string,
+    status:      t.status     as string,
+    dueDate:     t.dueDate    ? t.dueDate.toISOString() : null,
+    assignee:    t.assignee,
+    labels:      t.labels.map((l: { id: string; name: string; color: string }) => ({ id: l.id, name: l.name, color: l.color })),
+    _count:      t._count,
   }));
 
-  const canDeleteProject = hasPermission(session!.user.role as Role, "project:delete");
+  const members = memberships.map((m: (typeof memberships)[number]) => ({
+    id:    m.user.id,
+    name:  m.user.name,
+    image: m.user.image,
+  }));
 
   return (
-    <div className="flex h-full flex-col gap-6">
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <Link
-            href="/projects"
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="size-3.5" />
-            Back to projects
-          </Link>
-          <div className="flex items-center gap-2">
-            {canDeleteProject && (
-              <DeleteProjectButton projectId={project.id} projectName={project.name} />
-            )}
-            <KanbanDoneButton />
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold text-foreground">{project.name}</h1>
-          <span
-            className={cn(
-              "rounded-full px-2 py-0.5 text-xs font-medium capitalize",
-              PRIORITY_STYLES[project.priority]
-            )}
-          >
-            {project.priority.toLowerCase()}
-          </span>
-        </div>
-        {project.description && (
-          <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
-        )}
-      </div>
+    <div className="flex h-full flex-col gap-4">
+      <Link href="/projects"
+        className="flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="size-3.5" /> Back to projects
+      </Link>
 
-      <KanbanBoardLoader
-        projectId={project.id}
+      <ProjectView
+        project={{
+          id:          project.id,
+          name:        project.name,
+          description: project.description ?? null,
+          status:      project.status as string,
+          priority:    project.priority as string,
+          dueDate:     (project as { dueDate?: Date | null }).dueDate?.toISOString() ?? null,
+          updatedAt:   (project as { updatedAt: Date }).updatedAt.toISOString(),
+        }}
         initialTasks={tasks}
+        members={members}
         userRole={session!.user.role}
+        currentUserId={session!.user.id}
       />
     </div>
   );

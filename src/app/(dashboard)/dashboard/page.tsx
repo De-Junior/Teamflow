@@ -1,60 +1,150 @@
-// PASTE LOCATION: src/app/(dashboard)/dashboard/page.tsx (overwrite entire file)
-import Link from "next/link";
+// PASTE LOCATION: src/app/(dashboard)/dashboard/page.tsx
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
+import { hasPermission } from "@/lib/auth/permissions";
+import type { Role } from "@prisma/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FolderKanban, CheckCircle2, Users, Clock, ArrowRight, WifiOff } from "lucide-react";
+
+import { QuickActions } from "@/components/dashboard/widgets/quick-actions";
+import { OrgStatisticsWidget } from "@/components/dashboard/widgets/org-statistics";
+import { MyTasksWidget } from "@/components/dashboard/widgets/my-tasks";
+import { WelcomeBanner } from "@/components/dashboard/widgets/welcome-banner";
+import { UpcomingDeadlinesWidget } from "@/components/dashboard/widgets/upcoming-deadlines";
+import { RecentProjectsWidget } from "@/components/dashboard/widgets/recent-projects";
+import { OpenInvitationsWidget } from "@/components/dashboard/widgets/open-invitations";
+import { ComingSoonWidget } from "@/components/dashboard/widgets/coming-soon";
+import { FolderKanban, WifiOff, Activity, Users2, Bell, HardDrive } from "lucide-react";
 
 export default async function DashboardPage() {
   const session = await auth();
   const tenantId = session!.user.organizationId;
+  const userId = session!.user.id;
+  const role = session!.user.role as Role;
+  const canInvite = hasPermission(role, "members:invite");
 
-  type RecentProject = { id: string; name: string; _count: { tasks: number } };
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const endOfWeek = new Date(startOfToday);
+  endOfWeek.setDate(endOfWeek.getDate() + 7);
 
+  let dbError = false;
+  let organizationName = "TeamFlow";
   let projectCount = 0;
   let taskCount = 0;
   let memberCount = 0;
-  let recentProjects: RecentProject[] = [];
-  let dbError = false;
+  let completionRate = 0;
+  let myTasks: Array<{
+    id: string; title: string; dueDate: string | null;
+    projectId: string; projectName: string; isOverdue: boolean;
+  }> = [];
+  let deadlineTasks: Array<{ id: string; title: string; dueDate: string; projectId: string }> = [];
+  let recentProjects: Array<{
+    id: string; name: string; status: string; dueDate: string | null;
+    totalTasks: number; completedTasks: number; memberCount: number;
+  }> = [];
+  let openInvitations: Array<{ id: string; email: string; role: string }> = [];
 
   try {
-    const results = await Promise.all([
+    const [
+      organization,
+      pCount,
+      tCount,
+      doneTaskCount,
+      mCount,
+      myTasksRaw,
+      deadlineTasksRaw,
+      recentProjectsRaw,
+      invitations,
+    ] = await Promise.all([
+      prisma.organization.findUnique({ where: { id: tenantId }, select: { name: true } }),
       prisma.project.count({ where: { tenantId } }),
-      prisma.task.count({ where: { tenantId, status: { not: "DONE" } } }),
+      prisma.task.count({ where: { tenantId } }),
+      prisma.task.count({ where: { tenantId, status: "DONE" } }),
       prisma.membership.count({ where: { tenantId } }),
+
+      prisma.task.findMany({
+        where: { tenantId, assigneeId: userId, status: { not: "DONE" } },
+        orderBy: [{ dueDate: "asc" }],
+        take: 8,
+        include: { project: { select: { id: true, name: true } } },
+      }),
+
+      prisma.task.findMany({
+        where: {
+          tenantId,
+          status: { not: "DONE" },
+          dueDate: { gte: startOfToday, lt: endOfWeek },
+        },
+        orderBy: { dueDate: "asc" },
+        take: 10,
+        select: { id: true, title: true, dueDate: true, projectId: true },
+      }),
+
       prisma.project.findMany({
         where: { tenantId },
         orderBy: { createdAt: "desc" },
-        take: 3,
-        include: { _count: { select: { tasks: true } } },
+        take: 4,
+        include: { tasks: { select: { status: true, assigneeId: true } } },
+      }),
+
+      prisma.invitation.findMany({
+        where: { tenantId, status: "PENDING", expiresAt: { gt: now } },
+        select: { id: true, email: true, role: true },
       }),
     ]);
-    projectCount = results[0];
-    taskCount = results[1];
-    memberCount = results[2];
-    recentProjects = results[3];
+
+    organizationName = organization?.name ?? "TeamFlow";
+    projectCount = pCount;
+    taskCount = tCount;
+    memberCount = mCount;
+    completionRate = tCount === 0 ? 0 : Math.round((doneTaskCount / tCount) * 100);
+
+    myTasks = myTasksRaw.map((task: (typeof myTasksRaw)[number]) => ({
+      id: task.id,
+      title: task.title,
+      dueDate: task.dueDate ? task.dueDate.toISOString() : null,
+      projectId: task.project.id,
+      projectName: task.project.name,
+      isOverdue: task.dueDate ? task.dueDate < now : false,
+    }));
+
+    deadlineTasks = deadlineTasksRaw
+      .filter((t: (typeof deadlineTasksRaw)[number]) => t.dueDate)
+      .map((t: (typeof deadlineTasksRaw)[number]) => ({
+        id: t.id,
+        title: t.title,
+        dueDate: t.dueDate!.toISOString(),
+        projectId: t.projectId,
+      }));
+
+    recentProjects = recentProjectsRaw.map((project: (typeof recentProjectsRaw)[number]) => {
+      const totalTasks = project.tasks.length;
+      const completedTasks = project.tasks.filter(
+        (t: (typeof project.tasks)[number]) => t.status === "DONE"
+      ).length;
+      const memberIds = new Set(
+        project.tasks.map((t: (typeof project.tasks)[number]) => t.assigneeId).filter(Boolean)
+      );
+      return {
+        id: project.id,
+        name: project.name,
+        status: project.status,
+        dueDate: project.dueDate ? project.dueDate.toISOString() : null,
+        totalTasks,
+        completedTasks,
+        memberCount: memberIds.size,
+      };
+    });
+
+    openInvitations = invitations;
   } catch (error) {
     console.error("[DASHBOARD_DB_ERROR]", error);
     dbError = true;
   }
 
-  const stats = [
-    { label: "Active projects", value: projectCount, icon: FolderKanban, href: "/projects" },
-    { label: "Open tasks", value: taskCount, icon: Clock, href: null },
-    { label: "Team members", value: memberCount, icon: Users, href: null },
-    { label: "Completed this week", value: 0, icon: CheckCircle2, href: null },
-  ];
-
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">
-          Welcome back, {session!.user.name?.split(" ")[0]}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Here&apos;s what&apos;s happening across your organization.
-        </p>
-      </div>
+      <WelcomeBanner userName={session!.user.name ?? null} organizationName={organizationName} />
 
       {dbError && (
         <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3">
@@ -69,73 +159,67 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {stats.map(({ label, value, icon: Icon, href }) => {
-          const card = (
-            <Card className={href ? "transition-shadow hover:shadow-md" : undefined}>
-              <CardContent className="flex items-center justify-between p-5">
-                <div>
-                  <p className="text-xs text-muted-foreground">{label}</p>
-                  <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
-                </div>
-                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-accent">
-                  <Icon className="size-4 text-accent-foreground" />
-                </div>
-              </CardContent>
-            </Card>
-          );
-          return href ? (
-            <Link key={label} href={href}>{card}</Link>
-          ) : (
-            <div key={label}>{card}</div>
-          );
-        })}
+      <QuickActions canInvite={canInvite} />
+
+      <OrgStatisticsWidget
+        projectCount={projectCount}
+        taskCount={taskCount}
+        memberCount={memberCount}
+        completionRate={completionRate}
+      />
+
+      <OpenInvitationsWidget invitations={openInvitations} />
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <MyTasksWidget tasks={myTasks} />
+        <UpcomingDeadlinesWidget tasks={deadlineTasks} />
       </div>
 
-      {!dbError && recentProjects.length === 0 && (
+      {!dbError && recentProjects.length === 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">No projects yet</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <FolderKanban className="size-4" />
+              No projects yet
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              Once you create your first project it&apos;ll show up here with a live Kanban board.
+              Once you create your first project, it&apos;ll show up here with a live Kanban board.
             </p>
           </CardContent>
         </Card>
+      ) : (
+        <RecentProjectsWidget projects={recentProjects} />
       )}
 
-      {!dbError && recentProjects.length > 0 && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Recent projects</CardTitle>
-            <Link
-              href="/projects"
-              className="flex items-center gap-1 text-sm text-primary hover:underline"
-            >
-              View all
-              <ArrowRight className="size-3.5" />
-            </Link>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {recentProjects.map((project) => (
-              <Link
-                key={project.id}
-                href={`/projects/${project.id}`}
-                className="flex items-center justify-between rounded-md border border-border p-3 transition-colors hover:bg-muted"
-              >
-                <div>
-                  <p className="text-sm font-medium text-foreground">{project.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {project._count.tasks} {project._count.tasks === 1 ? "task" : "tasks"}
-                  </p>
-                </div>
-                <ArrowRight className="size-4 text-muted-foreground" />
-              </Link>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+      <div>
+        <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Coming soon
+        </p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <ComingSoonWidget
+            title="Recent activity"
+            description="A feed of what's happening — projects created, tasks completed, comments, new members."
+            icon={Activity}
+          />
+          <ComingSoonWidget
+            title="Team activity"
+            description="See who's online and recently active across your organization."
+            icon={Users2}
+          />
+          <ComingSoonWidget
+            title="Notifications"
+            description="A central place for unread mentions, assignments, and updates."
+            icon={Bell}
+          />
+          <ComingSoonWidget
+            title="Storage used"
+            description="Track file storage once uploads are wired up."
+            icon={HardDrive}
+          />
+        </div>
+      </div>
     </div>
   );
 }
