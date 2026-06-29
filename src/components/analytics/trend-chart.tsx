@@ -1,10 +1,10 @@
-// PASTE LOCATION: src/components/analytics/team-productivity-chart.tsx
+// PASTE LOCATION: src/components/analytics/trend-chart.tsx
 "use client";
 
 import {
   ResponsiveContainer,
-  BarChart,
-  Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   Tooltip,
@@ -12,46 +12,42 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export type ProductivityRow = {
-  name: string;
-  total: number;
-  completed: number;
-};
-
-export function TeamProductivityChart({ data }: { data: ProductivityRow[] }) {
+export function TrendChart({
+  title,
+  data,
+  color = "var(--primary)",
+}: {
+  title: string;
+  data: { label: string; value: number }[];
+  color?: string;
+}) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Team productivity & workload</CardTitle>
+        <CardTitle className="text-base">{title}</CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
-        {data.length === 0 ? (
+        {data.every((d) => d.value === 0) ? (
           <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-            No tasks assigned yet.
+            No data in this range yet.
           </div>
         ) : (
-          <div className="h-56 w-full">
+          <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={data}
-                layout="vertical"
-                margin={{ top: 8, right: 16, left: 8, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+              <AreaChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                 <XAxis
-                  type="number"
-                  allowDecimals={false}
+                  dataKey="label"
                   tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
-                  type="category"
-                  dataKey="name"
-                  width={100}
+                  allowDecimals={false}
                   tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                   axisLine={false}
                   tickLine={false}
+                  width={28}
                 />
                 <Tooltip
                   contentStyle={{
@@ -61,16 +57,15 @@ export function TeamProductivityChart({ data }: { data: ProductivityRow[] }) {
                     fontSize: "12px",
                   }}
                 />
-                <Bar dataKey="completed" name="Completed" stackId="a" fill="var(--status-done)" />
-                <Bar
-                  dataKey="total"
-                  name="Total assigned"
-                  stackId="b"
-                  fill="var(--status-todo)"
-                  fillOpacity={0.4}
-                  radius={[0, 4, 4, 0]}
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  stroke={color}
+                  fill={color}
+                  fillOpacity={0.12}
+                  strokeWidth={2}
                 />
-              </BarChart>
+              </AreaChart>
             </ResponsiveContainer>
           </div>
         )}
