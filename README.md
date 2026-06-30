@@ -508,11 +508,11 @@ MIT — see `LICENSE` for details.
 
 ### Demo Login
 
-> ⚠️ **Before making this repository public:** the credentials below are real test credentials used during development. If this README is published as-is, rotate this account's password to a disposable demo-only value first — a public README with a working password is a credibility risk in front of recruiters and engineers, not a convenience.
+
 
 | Field | Value |
 |---|---|
-| Email | `Hlungwane.james.junior@gmail.com` |
+| Email | `recruiter@teamflow.dev` |
 | Password | `Password123` |
 
 ---
