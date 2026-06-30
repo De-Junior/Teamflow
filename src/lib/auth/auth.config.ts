@@ -5,13 +5,13 @@ import Google from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db/prisma";
 import { loginSchema } from "@/validations/auth";
-import { ensureOrganization } from "@/lib/auth/ensure-organization";
 
 export const authConfig: NextAuthConfig = {
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      allowDangerousEmailAccountLinking: true,
     }),
 
     Credentials({
@@ -76,22 +76,52 @@ export const authConfig: NextAuthConfig = {
           token.tenantId = membership.organizationId;
           token.role = membership.role;
           token.organizationSlug = membership.organization.slug;
-        } else {
-          if (!user.id) {
-            return token;
+        }
+
+        // Active session tracking — only in Node runtime (not Edge middleware)
+        if (typeof (globalThis as { EdgeRuntime?: unknown }).EdgeRuntime === "undefined") {
+          try {
+            const sessionId = crypto.randomUUID();
+            await prisma.activeSession.create({
+              data: { userId: user.id as string, sessionId, deviceLabel: "Unknown device" },
+            });
+            token.sessionId = sessionId;
+            token.sessionCheckedAt = Date.now();
+          } catch (err) {
+            console.error("[ACTIVE_SESSION_CREATE_ERROR]", err);
           }
-          const ensured = await ensureOrganization(user.id, user.name ?? null);
-          token.organizationId = ensured.organizationId;
-          token.tenantId = ensured.organizationId;
-          token.role = ensured.role;
-          token.organizationSlug = ensured.organizationSlug;
         }
       }
 
-      if (trigger === "update" && session?.organizationId) {
-        token.organizationId = session.organizationId;
-        token.tenantId = session.organizationId;
-        token.role = session.role;
+      if (trigger === "update" && session) {
+        if (session.organizationId) {
+          token.organizationId = session.organizationId;
+          token.tenantId = session.organizationId;
+          token.role = session.role;
+        }
+        if (session.name !== undefined) {
+          token.name = session.name;
+        }
+      }
+
+      // Revocation check — re-checked at most every 5 minutes to limit DB load
+      const isEdge = typeof (globalThis as { EdgeRuntime?: unknown }).EdgeRuntime !== "undefined";
+      const shouldCheck =
+        !isEdge && token.sessionId &&
+        (!token.sessionCheckedAt || Date.now() - (token.sessionCheckedAt as number) > 5 * 60 * 1000);
+
+      if (shouldCheck) {
+        try {
+          const active = await prisma.activeSession.findUnique({
+            where: { sessionId: token.sessionId as string },
+          });
+          if (active?.revoked) {
+            return null; // forces sign-out on next request
+          }
+          token.sessionCheckedAt = Date.now();
+        } catch (err) {
+          console.error("[ACTIVE_SESSION_CHECK_ERROR]", err);
+        }
       }
 
       return token;
@@ -104,14 +134,9 @@ export const authConfig: NextAuthConfig = {
         session.user.tenantId = token.tenantId as string;
         session.user.role = token.role as string;
         session.user.organizationSlug = token.organizationSlug as string;
+        session.user.sessionId = token.sessionId as string | undefined;
       }
       return session;
     },
-  },
-
-  session: {
-    strategy: "jwt",
-    maxAge: 60 * 3,
-    updateAge: 30,
   },
 };

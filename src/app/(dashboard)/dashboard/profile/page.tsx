@@ -1,38 +1,26 @@
 // PASTE LOCATION: src/app/(dashboard)/dashboard/profile/page.tsx (overwrite entire file)
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/db/prisma";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ProfileForm } from "@/components/profile/profile-form";
+import { auth }         from "@/lib/auth";
+import { prisma }       from "@/lib/db/prisma";
+import { ProfileClient }from "@/components/profile/profile-client";
 
 export default async function ProfilePage() {
   const session = await auth();
-  const user    = session!.user;
-
-  const dbUser = await prisma.user.findUnique({
-    where:  { id: user.id },
-    select: { password: true },
+  const dbUser  = await prisma.user.findUnique({
+    where:  { id: session!.user.id },
+    select: { name: true, email: true, image: true, phone: true, timezone: true, language: true, bio: true },
   });
 
   return (
-    <div className="flex max-w-2xl flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Profile</h1>
-        <p className="text-sm text-muted-foreground">Manage your personal account settings.</p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Account information</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ProfileForm
-            initialName={user.name ?? ""}
-            email={user.email ?? ""}
-            role={user.role ?? "VIEWER"}
-            hasPassword={!!dbUser?.password}
-          />
-        </CardContent>
-      </Card>
-    </div>
+    <ProfileClient
+      user={{
+        name:     dbUser?.name ?? "",
+        email:    dbUser?.email ?? "",
+        image:    dbUser?.image ?? null,
+        phone:    dbUser?.phone ?? "",
+        timezone: dbUser?.timezone ?? "UTC",
+        language: dbUser?.language ?? "en",
+        bio:      dbUser?.bio ?? "",
+      }}
+    />
   );
 }

@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   /* Base surfaces — quiet, slightly warm neutrals (not pure slate) */
   --background: #fafaf9;
@@ -36,6 +38,47 @@
   --priority-medium: #ca8a04;
   --priority-high: #ea580c;
   --priority-urgent: #dc2626;
+
+  color-scheme: light;
+}
+
+.dark {
+  /* Base surfaces — dark zinc, not pure black */
+  --background: #0c0a09;
+  --foreground: #fafaf9;
+  --card: #18181b;
+  --card-foreground: #fafaf9;
+  --border: #27272a;
+  --input: #27272a;
+  --muted: #1c1c1f;
+  --muted-foreground: #a1a1aa;
+
+  /* Brand — brightened slightly for contrast against dark surfaces */
+  --primary: #6366f1;
+  --primary-foreground: #ffffff;
+  --secondary: #27272a;
+  --secondary-foreground: #fafaf9;
+  --accent: #1e1b4b;
+  --accent-foreground: #c7d2fe;
+  --ring: #6366f1;
+  --destructive: #f87171;
+  --destructive-foreground: #18181b;
+
+  /* Semantic status/priority colors stay the same hues so the same color
+     always means the same thing in light and dark mode; only swap where
+     contrast against a dark surface genuinely requires it */
+  --status-backlog: #94a3b8;
+  --status-todo: #94a3b8;
+  --status-in-progress: #60a5fa;
+  --status-review: #fbbf24;
+  --status-done: #4ade80;
+
+  --priority-low: #84cc16;
+  --priority-medium: #eab308;
+  --priority-high: #fb923c;
+  --priority-urgent: #f87171;
+
+  color-scheme: dark;
 }
 
 @theme inline {
