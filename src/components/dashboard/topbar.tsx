@@ -4,7 +4,8 @@
 import { signOut } from "next-auth/react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Avatar from "@radix-ui/react-avatar";
-import { ChevronDown, LogOut, User } from "lucide-react";
+import { ChevronDown, LogOut, User, Menu } from "lucide-react";
+import { useSidebar } from "@/components/dashboard/sidebar-context";
 
 export function Topbar({
   userName,
@@ -15,6 +16,8 @@ export function Topbar({
   userEmail: string;
   role: string;
 }) {
+  const { setIsOpen } = useSidebar();
+
   const initials = userName
     .split(" ")
     .map((part) => part[0])
@@ -24,7 +27,13 @@ export function Topbar({
 
   return (
     <header className="flex h-14 items-center justify-between border-b border-border bg-card px-6">
-      <div />
+      <button
+        onClick={() => setIsOpen(true)}
+        className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+        aria-label="Open navigation"
+      >
+        <Menu className="size-5" />
+      </button>
 
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
