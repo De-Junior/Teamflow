@@ -36,6 +36,7 @@ A production-style SaaS application demonstrating tenant isolation, role-based a
 - [Installation](#installation)
 - [Environment Variables](#environment-variables)
 - [Running the Project](#running-the-project)
+- [Demo Data / Seeding](#demo-data--seeding)
 - [Screenshots](#screenshots)
 - [API Overview](#api-overview)
 - [Development Workflow](#development-workflow)
@@ -129,6 +130,7 @@ The application was built iteratively, feature by feature, with each addition re
 - Centralized Zod validation schemas shared between client forms and API routes
 - Consistent tenant-scoped repository pattern instead of ad hoc Prisma calls
 - ESLint (Next.js core-web-vitals + TypeScript config) and Prettier with Tailwind class sorting
+- Prisma seed script (`prisma/seed.ts`) that provisions a fully populated demo organization — recruiters or reviewers can log in immediately and see real data rather than an empty account (see [Demo Data / Seeding](#demo-data--seeding))
 
 ### Planned (scaffolded, not implemented)
 The following packages are installed and partially stubbed but are **not functional yet** — flagged here explicitly rather than glossed over:
@@ -194,6 +196,7 @@ Server Components are used by default for all data-fetching pages (dashboard, pr
 |---|---|
 | PostgreSQL (hosted on Neon) | Primary relational database |
 | Prisma 7 (`@prisma/adapter-pg`) | ORM, migrations, and type-safe query builder |
+| `tsx` | Runs the TypeScript seed script (`prisma/seed.ts`) directly, no separate build step |
 
 ### Validation
 | Technology | Purpose |
@@ -224,6 +227,7 @@ Server Components are used by default for all data-fetching pages (dashboard, pr
 - **Credentials login:** email/password → `bcrypt.compare` against the stored hash → `EMAIL_NOT_VERIFIED` thrown if unverified → JWT issued
 - **Google OAuth:** standard Auth.js OAuth flow, with `allowDangerousEmailAccountLinking: true` so a user who registered with a password can also sign in with Google on the same email
 - **Session strategy:** JWT (required by the Credentials provider — Auth.js does not support database sessions alongside Credentials). To still support "view active sessions" and "sign out other devices," a custom `ActiveSession` table was added: each login writes a row with a random `sessionId` embedded in the JWT; the `jwt` callback re-checks that row (at most every 5 minutes, and only outside the Edge runtime, since Prisma's standard driver cannot open connections from Edge) and forces a sign-out if it's been marked revoked
+- **Host trust:** `trustHost: true` is set explicitly in the Auth.js config so redirect/callback URLs resolve correctly against the deployed Vercel domain rather than falling back to a default host
 
 ### Authorization
 - A single permission matrix (`Record<Role, Permission[]>`) in `src/lib/auth/permissions.ts` is the only place role-to-permission mappings are defined
@@ -234,7 +238,7 @@ Server Components are used by default for all data-fetching pages (dashboard, pr
 - Tenant isolation is enforced at the repository layer, not the UI layer — even a malformed or malicious request cannot read or write another tenant's `Project` or `Task` rows, because the repository functions hard-inject `tenantId` into every `where` clause
 
 ### Database Access
-- All access goes through Prisma's generated client via `src/lib/db/prisma.ts`
+- All access goes through Prisma's generated client via `src/lib/db/prisma.ts`, which wires the Prisma 7 `@prisma/adapter-pg` driver adapter (Prisma 7 has no built-in query engine, so a driver adapter is required regardless of database provider)
 - Business-entity access (`Project`, `Task`) goes through `src/lib/db/tenant.ts` repository functions; auxiliary lookups (memberships, invitations, audit logs) call Prisma directly within already-tenant-scoped route handlers
 
 ### Session Handling
@@ -253,6 +257,7 @@ See Authentication Flow above — JWT-based, with custom revocation tracking lay
 teamflow/
 ├── prisma/
 │   ├── schema.prisma          # Full data model — see Database section
+│   ├── seed.ts                # Demo-data seed script — see Demo Data / Seeding
 │   └── migrations/
 ├── src/
 │   ├── app/
@@ -283,6 +288,7 @@ teamflow/
 │   ├── validations/             # Zod schemas (auth, project, team)
 │   ├── types/                    # NextAuth type augmentation
 │   └── proxy.ts                  # Middleware — auth + tenant guards
+├── prisma.config.ts               # Prisma 7 config (schema path, migrations, seed command, datasource)
 └── package.json
 ```
 
@@ -319,6 +325,7 @@ The schema (`prisma/schema.prisma`) models a multi-tenant SaaS with the followin
 - **Session management:** JWT strategy with a custom `ActiveSession` table layered on top to support viewing and revoking individual device sessions — see [System Design](#system-design) for why this approach was used instead of Auth.js's database session strategy
 - **Middleware protection:** `src/proxy.ts` runs on every non-static request, enforcing authentication on protected routes and redirecting authenticated users away from `/login` and `/register`
 - **RBAC:** five roles (`SUPER_ADMIN`, `OWNER`, `MANAGER`, `DEVELOPER`, `VIEWER`) defined once in `src/lib/auth/permissions.ts` and consulted by both UI and API layers
+- **Deployment note:** `trustHost: true` is required in the Auth.js config for correct redirect behavior on Vercel — omitting it can cause sign-out/callback redirects to resolve against the wrong host
 
 ---
 
@@ -367,6 +374,9 @@ npx prisma migrate dev
 
 # 5. Generate the Prisma client (also runs automatically on build)
 npx prisma generate
+
+# 6. (Optional) Seed a fully populated demo account
+npx prisma db seed
 ```
 
 ---
@@ -376,9 +386,9 @@ npx prisma generate
 | Variable | Required | Description |
 |---|---|---|
 | `DATABASE_URL` | ✅ | Pooled PostgreSQL connection string (Neon) |
-| `DIRECT_URL` | ✅ | Direct (non-pooled) PostgreSQL connection string, used by Prisma migrations |
+| `DIRECT_URL` | ✅ | Direct (non-pooled) PostgreSQL connection string, used by Prisma migrations and the seed script |
 | `NEXTAUTH_SECRET` | ✅ | Secret used to sign Auth.js JWTs |
-| `NEXTAUTH_URL` | ✅ | Base URL of the deployed app (e.g. `http://localhost:3000`) |
+| `NEXTAUTH_URL` / `AUTH_URL` | ✅ | Base URL of the deployed app (e.g. `https://your-app.vercel.app`, no trailing slash) |
 | `GOOGLE_CLIENT_ID` | Optional | Enables Google OAuth login if set |
 | `GOOGLE_CLIENT_SECRET` | Optional | Paired with the above |
 | `REDIS_URL` | Planned | Not yet consumed by the app — reserved for future real-time/queue features |
@@ -387,7 +397,7 @@ npx prisma generate
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PRICE_*` | Planned | Billing not implemented |
 | `OPENAI_API_KEY` | Planned | No AI features implemented yet |
 | `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Optional | Error monitoring — SDK installed, not configured |
-| `NEXT_PUBLIC_APP_URL` | ✅ | Used to build absolute links (e.g. invitation URLs) |
+| `NEXT_PUBLIC_APP_URL` | ✅ | Used to build absolute links (e.g. invitation URLs, Stripe redirect URLs) — no trailing slash |
 | `NEXT_PUBLIC_APP_NAME` | Optional | Display name used in metadata |
 
 > No secrets are included in this table or anywhere else in this repository.
@@ -410,9 +420,34 @@ npm run lint
 # Database
 npx prisma migrate dev --name <migration_name>   # create + apply a migration
 npx prisma studio                                  # browse data visually
+npx prisma db seed                                  # populate a demo organization — see below
 ```
 
-> No seed script is currently present in the project.
+---
+
+## Demo Data / Seeding
+
+A seed script (`prisma/seed.ts`) provisions a complete demo organization so the app doesn't need to be explored on an empty account. It's idempotent (uses `upsert` for organization/users/memberships), so it's safe to run more than once.
+
+**What it creates:**
+- An organization ("TeamFlow Demo Co.") on the Professional plan
+- A recruiter/owner account with the credentials below
+- Four teammates across Manager, Developer, and Viewer roles, so team and analytics views have real data
+- Two projects with tasks spread across every Kanban status and priority, including labels, subtasks, checklist items, comments, and time entries
+
+**Run it:**
+```bash
+npx prisma db seed
+```
+
+**Demo login:**
+
+| Field | Value |
+|---|---|
+| Email | `recruiter@teamflow-demo.com` |
+| Password | `Demo1234!` |
+
+> The seed command is wired up in `prisma.config.ts` (`migrations.seed`), matching Prisma 7's config-file-based seed convention rather than the older `package.json#prisma.seed` field.
 
 ---
 
@@ -454,7 +489,9 @@ All routes live under `src/app/api/` and follow the `{ success, data?, message? 
 | `/api/users/sessions`, `/touch`, `/revoke-others`, `/[id]` | various | Multi-device session management |
 | `/api/users/connected-accounts`, `/[provider]` | `GET`, `DELETE` | OAuth account linking management |
 | `/api/organizations` | `PATCH` | Organization settings |
-| `/api/webhooks/stripe`, `/api/notifications`, `/api/files` | — | Scaffolded, not implemented |
+| `/api/webhooks/stripe`, `/api/notifications` | — | Scaffolded, not implemented |
+
+> The standalone file-upload routes (`/api/files/*`) were removed along with the unfinished S3 integration; avatar upload now lives entirely under `/api/users/avatar` and returns a graceful "storage not configured" response until AWS credentials are supplied.
 
 ---
 
@@ -508,7 +545,7 @@ MIT — see `LICENSE` for details.
 
 ### Demo Login
 
-
+Log in directly with a fully seeded account (see [Demo Data / Seeding](#demo-data--seeding) for what's included):
 
 | Field | Value |
 |---|---|
