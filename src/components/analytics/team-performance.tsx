@@ -14,7 +14,7 @@ export function TeamPerformance({ data }: { data: TeamPerformanceData }) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Trophy className="size-4 text-[var(--priority-medium)]" />
+            <Trophy className="size-4 text-(--priority-medium)" />
             Most completed
           </CardTitle>
         </CardHeader>
@@ -38,7 +38,7 @@ export function TeamPerformance({ data }: { data: TeamPerformanceData }) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Clock className="size-4 text-[var(--status-in-progress)]" />
+            <Clock className="size-4 text-(--status-in-progress)" />
             Avg completion time
           </CardTitle>
         </CardHeader>

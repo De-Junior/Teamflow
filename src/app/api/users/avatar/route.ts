@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 // PASTE LOCATION: src/app/api/users/avatar/route.ts (create new file)
 import { NextResponse } from "next/server";
 import { auth }         from "@/lib/auth";

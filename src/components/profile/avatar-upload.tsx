@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 // PASTE LOCATION: src/components/profile/avatar-upload.tsx (overwrite entire file — fixes FormData for real upload later)
 "use client";
 
