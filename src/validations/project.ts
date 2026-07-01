@@ -6,8 +6,14 @@ export const createProjectSchema = z.object({
   description: z.string().max(2000).optional(),
   status: z.nativeEnum(ProjectStatus).default("ACTIVE"),
   priority: z.nativeEnum(Priority).default("MEDIUM"),
-  startDate: z.string().datetime().optional().nullable(),
-  dueDate: z.string().datetime().optional().nullable(),
+  startDate: z.preprocess(
+  (val) => (val === "" ? undefined : val),
+  z.string().datetime().optional().nullable()
+),
+dueDate: z.preprocess(
+  (val) => (val === "" ? undefined : val),
+  z.string().datetime().optional().nullable()
+),
 });
 
 export const updateProjectSchema = createProjectSchema.partial();

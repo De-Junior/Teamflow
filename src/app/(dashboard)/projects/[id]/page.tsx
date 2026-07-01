@@ -1,11 +1,12 @@
-// PASTE LOCATION: src/app/(dashboard)/projects/[id]/page.tsx (overwrite entire file)
 import { notFound }          from "next/navigation";
 import { auth }              from "@/lib/auth";
 import { projectRepository } from "@/lib/db/tenant";
 import { prisma }            from "@/lib/db/prisma";
+import { hasPermission }     from "@/lib/auth/permissions";
 import { ProjectView }       from "@/components/projects/project-view";
 import Link                  from "next/link";
 import { ArrowLeft }         from "lucide-react";
+import type { Role }         from "@prisma/client";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -16,7 +17,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     userId:         session!.user.id,
   };
 
-  const [project, memberships] = await Promise.all([
+  const [project, projectMembers, orgMembers] = await Promise.all([
     projectRepository(ctx).findById(id, {
       include: {
         tasks: {
@@ -29,6 +30,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         },
       },
     }),
+    prisma.projectMember.findMany({
+      where:   { projectId: id, tenantId: ctx.tenantId },
+      include: { user: { select: { id: true, name: true, image: true } } },
+    }),
     prisma.membership.findMany({
       where:   { tenantId: ctx.tenantId },
       include: { user: { select: { id: true, name: true, image: true } } },
@@ -36,6 +41,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   ]);
 
   if (!project) notFound();
+
+  const canManageMembers = hasPermission(session!.user.role as Role, "project:manage_members");
 
   const tasks = project.tasks.map((t: (typeof project.tasks)[number]) => ({
     id:          t.id,
@@ -49,7 +56,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     _count:      t._count,
   }));
 
-  const members = memberships.map((m: (typeof memberships)[number]) => ({
+  const members = projectMembers.map((m: (typeof projectMembers)[number]) => ({
+    id:    m.user.id,
+    name:  m.user.name,
+    image: m.user.image,
+  }));
+
+  const allOrgMembers = orgMembers.map((m: (typeof orgMembers)[number]) => ({
     id:    m.user.id,
     name:  m.user.name,
     image: m.user.image,
@@ -74,6 +87,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         }}
         initialTasks={tasks}
         members={members}
+        allOrgMembers={allOrgMembers}
+        canManageMembers={canManageMembers}
         userRole={session!.user.role}
         currentUserId={session!.user.id}
       />

@@ -1,7 +1,8 @@
-// PASTE LOCATION: src/app/api/invitations/route.ts
+// PASTE LOCATION: src/app/api/invitations/route.ts (overwrite entire file)
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
+import { createNotification } from "@/lib/db/tenant";
 import { requirePermission, UnauthorizedError } from "@/lib/auth/permissions";
 import { inviteMemberSchema } from "@/validations/team";
 import { Role, InvitationStatus } from "@prisma/client";
@@ -83,6 +84,32 @@ export async function POST(req: Request) {
         expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
       },
     });
+
+    // If the invited email already belongs to a registered user, notify
+    // them in-app immediately. If not, they have no User row yet — the
+    // only way to reach them right now is the invite link/email below.
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+
+    if (existingUser) {
+      const org = await prisma.organization.findUnique({
+        where: { id: tenantId },
+        select: { name: true },
+      });
+
+      await createNotification({
+        tenantId,
+        organizationId: tenantId,
+        userId: existingUser.id,
+        type: "USER_INVITED",
+        title: "You've been invited",
+        body: `You were invited to join ${org?.name ?? "an organization"} as ${role}`,
+        entityId: invitation.id,
+        entityType: "invitation",
+      });
+    }
 
     const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${invitation.token}`;
 

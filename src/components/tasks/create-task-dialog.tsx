@@ -1,7 +1,7 @@
-// PASTE LOCATION: src/components/tasks/create-task-dialog.tsx
+// PASTE LOCATION: src/components/tasks/create-task-dialog.tsx (overwrite entire file)
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createTaskSchema, type CreateTaskFormInput } from "@/validations/project";
@@ -27,6 +27,10 @@ import {
 } from "@/components/ui/dialog";
 import { Plus } from "lucide-react";
 
+type TeamMember = {
+  user: { id: string; name: string | null; email: string; image: string | null };
+};
+
 export function CreateTaskDialog({
   projectId,
   defaultStatus,
@@ -39,6 +43,9 @@ export function CreateTaskDialog({
   const [open, setOpen] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [membersFetched, setMembersFetched] = useState(false);
+  const loadingMembers = open && !membersFetched;
 
   const {
     register,
@@ -50,6 +57,29 @@ export function CreateTaskDialog({
     resolver: zodResolver(createTaskSchema),
     defaultValues: { priority: "MEDIUM", status: defaultStatus as never, projectId },
   });
+
+  // Fetch team members each time the dialog opens
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+
+    fetch("/api/members")
+      .then((res) => res.json())
+      .then((json) => {
+        if (!cancelled && json.success) setMembers(json.data);
+      })
+      .catch(() => {
+        if (!cancelled) setServerError("Couldn't load team members.");
+      })
+      .finally(() => {
+        if (!cancelled) setMembersFetched(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   async function onSubmit(values: CreateTaskFormInput) {
     setServerError(null);
@@ -105,25 +135,53 @@ export function CreateTaskDialog({
             <Textarea id="description" placeholder="Optional details…" {...register("description")} />
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label>Priority</Label>
-            <Controller
-              control={control}
-              name="priority"
-              render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="LOW">Low</SelectItem>
-                    <SelectItem value="MEDIUM">Medium</SelectItem>
-                    <SelectItem value="HIGH">High</SelectItem>
-                    <SelectItem value="URGENT">Urgent</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label>Priority</Label>
+              <Controller
+                control={control}
+                name="priority"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="LOW">Low</SelectItem>
+                      <SelectItem value="MEDIUM">Medium</SelectItem>
+                      <SelectItem value="HIGH">High</SelectItem>
+                      <SelectItem value="URGENT">Urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label>Assignee</Label>
+              <Controller
+                control={control}
+                name="assigneeId"
+                render={({ field }) => (
+                  <Select
+                    value={field.value ?? "unassigned"}
+                    onValueChange={(val) => field.onChange(val === "unassigned" ? null : val)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={loadingMembers ? "Loading…" : "Unassigned"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
+                      {members.map((m) => (
+                        <SelectItem key={m.user.id} value={m.user.id}>
+                          {m.user.name ?? m.user.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
           </div>
 
           {serverError && (

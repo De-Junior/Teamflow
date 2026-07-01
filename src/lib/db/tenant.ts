@@ -1,16 +1,11 @@
-/**
+﻿/**
  * Tenant-aware database helpers.
  *
  * Every query that touches business data MUST go through these helpers or
  * manually include `tenantId` in its where clause. This is the core of
- * multi-tenant data isolation — Organisation A can never read Organisation B's
+ * multi-tenant data isolation - Organisation A can never read Organisation B's
  * data because every query is automatically scoped.
  */
-
-// PASTE LOCATION: src/lib/db/tenant.ts (overwrite entire file)
-// This is the full file as it stood after the project/task/writeAuditLog
-// updates, with fileRepository added alongside projectRepository and
-// taskRepository. Nothing else changed.
 
 import { prisma } from "./prisma";
 import { Prisma } from "@prisma/client";
@@ -60,6 +55,28 @@ export function projectRepository(ctx: TenantContext) {
     delete: (id: string) =>
       prisma.project.deleteMany({
         where: { id, tenantId: ctx.tenantId },
+      }),
+  };
+}
+
+export function projectMemberRepository(ctx: TenantContext) {
+  return {
+    listByProject: (projectId: string) =>
+      prisma.projectMember.findMany({
+        where: { projectId, tenantId: ctx.tenantId },
+        include: { user: { select: { id: true, name: true, image: true, email: true } } },
+      }),
+
+    add: (projectId: string, userId: string) =>
+      prisma.projectMember.upsert({
+        where: { projectId_userId: { projectId, userId } },
+        create: { projectId, userId, tenantId: ctx.tenantId },
+        update: {},
+      }),
+
+    remove: (projectId: string, userId: string) =>
+      prisma.projectMember.deleteMany({
+        where: { projectId, userId, tenantId: ctx.tenantId },
       }),
   };
 }
@@ -201,6 +218,64 @@ export async function writeAuditLog(
       ipAddress: entry.ipAddress,
       userAgent: entry.userAgent,
       metadata: metadataValue,
+    },
+  });
+}
+
+// ─── Notification helpers ─────────────────────────────────────────────────────
+
+export function notificationRepository(ctx: TenantContext) {
+  return {
+    findMany: (args?: { unreadOnly?: boolean; take?: number }) =>
+      prisma.notification.findMany({
+        where: {
+          tenantId: ctx.tenantId,
+          userId: ctx.userId,
+          ...(args?.unreadOnly ? { read: false } : {}),
+        },
+        orderBy: { createdAt: "desc" },
+        take: args?.take ?? 30,
+      }),
+
+    unreadCount: () =>
+      prisma.notification.count({
+        where: { tenantId: ctx.tenantId, userId: ctx.userId, read: false },
+      }),
+
+    markRead: (id: string) =>
+      prisma.notification.updateMany({
+        where: { id, tenantId: ctx.tenantId, userId: ctx.userId },
+        data: { read: true },
+      }),
+
+    markAllRead: () =>
+      prisma.notification.updateMany({
+        where: { tenantId: ctx.tenantId, userId: ctx.userId, read: false },
+        data: { read: true },
+      }),
+  };
+}
+
+export async function createNotification(params: {
+  tenantId: string;
+  organizationId: string;
+  userId: string;
+  type: Prisma.NotificationCreateInput["type"];
+  title: string;
+  body: string;
+  entityId?: string;
+  entityType?: string;
+}) {
+  return prisma.notification.create({
+    data: {
+      tenantId: params.tenantId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      type: params.type,
+      title: params.title,
+      body: params.body,
+      entityId: params.entityId,
+      entityType: params.entityType,
     },
   });
 }

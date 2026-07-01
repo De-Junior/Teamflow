@@ -1,4 +1,4 @@
-// PASTE LOCATION: src/components/projects/project-view.tsx (create new file)
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useState, useEffect, useCallback }    from "react";
@@ -10,7 +10,7 @@ import { TaskCalendarView }                     from "@/components/tasks/task-ca
 import { TaskFilterBar }                        from "@/components/tasks/task-filter-bar";
 import { ProjectHeader }                        from "@/components/projects/project-header";
 import { KanbanDoneButton }                     from "@/components/tasks/kanban-done-button";
-import { Button }                               from "@/components/ui/button";
+import { ProjectMembersManager }                from "@/components/projects/project-members-manager";
 import { LayoutGrid, List, Calendar }           from "lucide-react";
 import { cn }                                   from "@/lib/utils";
 import type { TaskCardData }                    from "@/components/tasks/task-card";
@@ -36,13 +36,15 @@ function matchesFilters(task: TaskCardData, f: Filters) {
 }
 
 export function ProjectView({
-  project, initialTasks, members, userRole, currentUserId,
+  project, initialTasks, members, allOrgMembers, canManageMembers, userRole, currentUserId,
 }: {
-  project:      ProjectViewData;
-  initialTasks: TaskCardData[];
-  members:      Member[];
-  userRole:     string;
-  currentUserId:string;
+  project:          ProjectViewData;
+  initialTasks:     TaskCardData[];
+  members:          Member[];
+  allOrgMembers:    Member[];
+  canManageMembers: boolean;
+  userRole:         string;
+  currentUserId:    string;
 }) {
   const router = useRouter();
   const [view,           setView]           = useState<View>("kanban");
@@ -60,12 +62,13 @@ export function ProjectView({
 
   const filteredTasks = tasks.filter((t) => matchesFilters(t, filters));
 
-  const handleTaskUpdated  = useCallback(() => { router.refresh(); }, [router]);
-  const handleTaskDeleted  = useCallback((id: string) => { setTasks(p => p.filter(t => t.id !== id)); router.refresh(); }, [router]);
-  const handleTaskDone     = useCallback((id: string) => { setTasks(p => p.map(t => t.id === id ? { ...t, status: "DONE" } : t)); router.refresh(); }, [router]);
-  const handleTaskCreated  = useCallback(() => { router.refresh(); }, [router]);
-  const handleTaskClick    = useCallback((id: string) => { setSelectedTaskId(id); }, []);
-  const handleModalClose   = useCallback(() => { setSelectedTaskId(null); router.refresh(); }, [router]);
+  const handleTaskUpdated    = useCallback(() => { router.refresh(); }, [router]);
+  const handleTaskDeleted    = useCallback((id: string) => { setTasks(p => p.filter(t => t.id !== id)); router.refresh(); }, [router]);
+  const handleTaskDone       = useCallback((id: string) => { setTasks(p => p.map(t => t.id === id ? { ...t, status: "DONE" } : t)); router.refresh(); }, [router]);
+  const handleTaskCreated    = useCallback(() => { router.refresh(); }, [router]);
+  const handleTaskClick      = useCallback((id: string) => { setSelectedTaskId(id); }, []);
+  const handleModalClose     = useCallback(() => { setSelectedTaskId(null); router.refresh(); }, [router]);
+  const handleMembersChanged = useCallback(() => { router.refresh(); }, [router]);
 
   // Stats for header
   const doneCount = tasks.filter(t => t.status === "DONE").length;
@@ -82,7 +85,7 @@ export function ProjectView({
         members={members}
       />
 
-      {/* Toolbar: view toggle + filters + done button */}
+      {/* Toolbar: view toggle + filters + members + done button */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center rounded-md border border-border p-0.5">
           {(["kanban","list","calendar"] as View[]).map((v) => {
@@ -101,6 +104,16 @@ export function ProjectView({
         </div>
 
         <TaskFilterBar filters={filters} onFiltersChange={setFilters} members={members} />
+
+        {canManageMembers && (
+          <ProjectMembersManager
+            projectId={project.id}
+            members={members}
+            allOrgMembers={allOrgMembers}
+            onMembersChanged={handleMembersChanged}
+          />
+        )}
+
         <div className="ml-auto"><KanbanDoneButton /></div>
       </div>
 

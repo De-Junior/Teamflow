@@ -12,6 +12,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { FolderKanban, Search, Trash2, Archive, X } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 const PAGE_SIZE = 12;
 
@@ -39,6 +40,8 @@ export function ProjectsClient({
   const [selected,     setSelected]     = useState<Set<string>>(new Set());
   const [editProject,  setEditProject]  = useState<ProjectData | null>(null);
   const [bulkLoading,  setBulkLoading]  = useState(false);
+  const searchParams = useSearchParams();
+  const shouldAutoOpen = searchParams.get("create") === "1";
 
   // ── Filter + sort ────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -177,7 +180,7 @@ export function ProjectsClient({
               : `${filtered.length}${filtered.length !== projects.length ? ` of ${projects.length}` : ""} ${projects.length === 1 ? "project" : "projects"}`}
           </p>
         </div>
-        {canCreate && <CreateProjectDialog onCreated={handleCreated} />}
+        {canCreate && <CreateProjectDialog onCreated={handleCreated} defaultOpen={shouldAutoOpen} />}
       </div>
 
       {/* Controls — only show when there are projects */}

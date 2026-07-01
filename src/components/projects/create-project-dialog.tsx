@@ -22,11 +22,13 @@ import type { ProjectData } from "./project-card";
 
 export function CreateProjectDialog({
   onCreated,
+  defaultOpen = false,
 }: {
   onCreated?: (project: ProjectData) => void;
+  defaultOpen?: boolean;
 }) {
   const router = useRouter();
-  const [open,         setOpen]         = useState(false);
+  const [open,         setOpen]         = useState(defaultOpen);
   const [serverError,  setServerError]  = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 

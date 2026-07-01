@@ -1,6 +1,6 @@
-import { Role } from "@prisma/client";
+﻿import { Role } from "@prisma/client";
 
-// ─── Permission definitions ───────────────────────────────────────────────────
+// ─── Permission definitions ──────────────────────────────────────────────────
 
 export type Permission =
   | "org:manage"
@@ -13,6 +13,7 @@ export type Permission =
   | "project:update"
   | "project:delete"
   | "project:archive"
+  | "project:manage_members"
   | "task:create"
   | "task:update"
   | "task:delete"
@@ -24,13 +25,13 @@ export type Permission =
   | "analytics:view"
   | "audit:view";
 
-// ─── Role → Permission matrix ─────────────────────────────────────────────────
+// ─── Role → Permission matrix ────────────────────────────────────────────────
 
 const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   SUPER_ADMIN: [
     "org:manage", "org:billing", "org:delete",
     "members:invite", "members:remove", "members:role_change",
-    "project:create", "project:update", "project:delete", "project:archive",
+    "project:create", "project:update", "project:delete", "project:archive", "project:manage_members",
     "task:create", "task:update", "task:delete", "task:assign",
     "comment:create", "comment:delete",
     "file:upload", "file:delete",
@@ -40,18 +41,15 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   OWNER: [
     "org:manage", "org:billing", "org:delete",
     "members:invite", "members:remove", "members:role_change",
-    "project:create", "project:update", "project:delete", "project:archive",
+    "project:create", "project:update", "project:delete", "project:archive", "project:manage_members",
     "task:create", "task:update", "task:delete", "task:assign",
     "comment:create", "comment:delete",
     "file:upload", "file:delete",
     "analytics:view", "audit:view",
   ],
 
-// PASTE LOCATION: src/lib/auth/permissions.ts
-// Find the MANAGER block (around line 30) and replace ONLY that block:
-
- MANAGER: [
-    "project:create", "project:update", "project:delete", "project:archive",
+  MANAGER: [
+    "project:create", "project:update", "project:delete", "project:archive", "project:manage_members",
     "task:create", "task:update", "task:delete", "task:assign",
     "comment:create", "comment:delete",
     "file:upload", "file:delete",
@@ -67,7 +65,7 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   VIEWER: [],
 };
 
-// ─── Role hierarchy (higher index = more access) ──────────────────────────────
+// ─── Role hierarchy (higher index = more access) ─────────────────────────────
 
 const ROLE_HIERARCHY: Role[] = [
   Role.VIEWER,

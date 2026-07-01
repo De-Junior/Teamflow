@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/refs */
+/* eslint-disable react-hooks/set-state-in-effect */
 // PASTE LOCATION: src/components/tasks/task-detail-modal.tsx (create new file)
 "use client";
 
@@ -9,12 +11,14 @@ import { Textarea }                     from "@/components/ui/textarea";
 import { Label }                        from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn }                           from "@/lib/utils";
+import { hasPermission }                from "@/lib/auth/permissions";
+import type { Role }                    from "@prisma/client";
 import {
   X, Plus, Trash2, Check, Clock, MessageSquare,
   CheckSquare, ListTodo, Activity, Info, Send,
 } from "lucide-react";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ─────────────────────────────────────────────────────────────────
 type FullTask = {
   id: string; title: string; description: string | null;
   status: string; priority: string; dueDate: string | null;
@@ -61,7 +65,7 @@ function fmtMins(m: number) {
   return h > 0 ? `${h}h ${rem}m` : `${rem}m`;
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── Main component ────────────────────────────────────────────────────────
 export function TaskDetailModal({
   taskId, userRole, currentUserId, members, onClose, onTaskUpdated,
 }: {
@@ -102,6 +106,7 @@ export function TaskDetailModal({
     if (tab === "comments"  && comments   === null) fetch(`/api/tasks/${taskId}/comments`).then(r=>r.json()).then(j=>j.success&&setComments(j.data));
     if (tab === "time"      && timeEntries=== null) fetch(`/api/tasks/${taskId}/time`).then(r=>r.json()).then(j=>j.success&&setTimeEntries(j.data));
     if (tab === "activity"  && activity   === null) fetch(`/api/tasks/${taskId}/activity`).then(r=>r.json()).then(j=>j.success&&setActivity(j.data));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, taskId]);
 
   async function patch(data: Record<string, unknown>) {
@@ -165,7 +170,7 @@ export function TaskDetailModal({
 
             {/* Tab content */}
             <div className="flex-1 overflow-y-auto">
-              {tab === "details"   && <DetailsTab task={task} members={members} updateLocal={updateLocalTask} patch={patch} />}
+              {tab === "details"   && <DetailsTab task={task} members={members} updateLocal={updateLocalTask} patch={patch} userRole={userRole} />}
               {tab === "subtasks"  && <SubtasksTab taskId={taskId} items={subtasks}  setItems={setSubtasks}  userRole={userRole} />}
               {tab === "checklist" && <ChecklistTab taskId={taskId} items={checklist} setItems={setChecklist} userRole={userRole} />}
               {tab === "comments"  && <CommentsTab taskId={taskId} items={comments}  setItems={setComments}  currentUserId={currentUserId} userRole={userRole} />}
@@ -179,7 +184,7 @@ export function TaskDetailModal({
   );
 }
 
-// ─── Title input ──────────────────────────────────────────────────────────────
+// ─── Title input ───────────────────────────────────────────────────────────
 function TitleInput({ value, onBlur }: { value: string; onBlur: (v: string) => void }) {
   const [v, setV] = useState(value);
   useEffect(() => { setV(value); }, [value]);
@@ -193,17 +198,22 @@ function TitleInput({ value, onBlur }: { value: string; onBlur: (v: string) => v
   );
 }
 
-// ─── Details tab ─────────────────────────────────────────────────────────────
-function DetailsTab({ task, members, updateLocal, patch }: {
+// ─── Details tab ────────────────────────────────────────────────────────────
+function DetailsTab({ task, members, updateLocal, patch, userRole }: {
   task: FullTask;
   members: Member[];
   updateLocal: (f: Partial<FullTask>) => void;
   patch: (d: Record<string, unknown>) => void;
+  userRole: string;
 }) {
   const [desc, setDesc] = useState(task.description ?? "");
   const [newLabel, setNewLabel] = useState("");
   const [newLabelColor, setNewLabelColor] = useState(LABEL_COLORS[0]);
   const [showLabelForm, setShowLabelForm] = useState(false);
+
+  // Only Owners/Managers (and Super Admin) can (re)assign a task —
+  // mirrors the "task:assign" permission in src/lib/auth/permissions.ts
+  const canAssign = hasPermission(userRole as Role, "task:assign");
 
   useEffect(() => { setDesc(task.description ?? ""); }, [task.description]);
 
@@ -310,23 +320,29 @@ function DetailsTab({ task, members, updateLocal, patch }: {
           </Select>
         </div>
 
-        {/* Assignee */}
+        {/* Assignee — editable only for roles with task:assign permission */}
         <div>
           <Label className="mb-1.5 block text-xs text-muted-foreground">Assignee</Label>
-          <Select
-            value={task.assignee?.id ?? "unassigned"}
-            onValueChange={(v) => {
-              const m = members.find(m => m.id === v);
-              updateLocal({ assignee: v === "unassigned" ? null : { id: v, name: m?.name ?? null } });
-              void patch({ assigneeId: v === "unassigned" ? null : v });
-            }}
-          >
-            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="unassigned">Unassigned</SelectItem>
-              {members.map((m) => <SelectItem key={m.id} value={m.id}>{m.name ?? m.id}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          {canAssign ? (
+            <Select
+              value={task.assignee?.id ?? "unassigned"}
+              onValueChange={(v) => {
+                const m = members.find(m => m.id === v);
+                updateLocal({ assignee: v === "unassigned" ? null : { id: v, name: m?.name ?? null } });
+                void patch({ assigneeId: v === "unassigned" ? null : v });
+              }}
+            >
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unassigned">Unassigned</SelectItem>
+                {members.map((m) => <SelectItem key={m.id} value={m.id}>{m.name ?? m.id}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          ) : (
+            <div className="flex h-8 items-center rounded-md border border-border bg-muted/40 px-2.5 text-xs text-muted-foreground">
+              {task.assignee?.name ?? "Unassigned"}
+            </div>
+          )}
         </div>
 
         {/* Due date */}
@@ -354,7 +370,7 @@ function DetailsTab({ task, members, updateLocal, patch }: {
   );
 }
 
-// ─── Subtasks tab ─────────────────────────────────────────────────────────────
+// ─── Subtasks tab ───────────────────────────────────────────────────────────
 function SubtasksTab({ taskId, items, setItems, userRole }: {
   taskId: string; items: SubTask[] | null;
   setItems: (v: SubTask[]) => void; userRole: string;
@@ -428,7 +444,7 @@ function SubtasksTab({ taskId, items, setItems, userRole }: {
   );
 }
 
-// ─── Checklist tab ────────────────────────────────────────────────────────────
+// ─── Checklist tab ──────────────────────────────────────────────────────────
 function ChecklistTab({ taskId, items, setItems, userRole }: {
   taskId: string; items: ChecklistItem[] | null;
   setItems: (v: ChecklistItem[]) => void; userRole: string;
@@ -508,7 +524,7 @@ function ChecklistTab({ taskId, items, setItems, userRole }: {
   );
 }
 
-// ─── Comments tab ─────────────────────────────────────────────────────────────
+// ─── Comments tab ───────────────────────────────────────────────────────────
 function CommentsTab({ taskId, items, setItems, currentUserId, userRole }: {
   taskId: string; items: Comment[] | null;
   setItems: (v: Comment[]) => void; currentUserId: string; userRole: string;
@@ -592,7 +608,7 @@ function CommentsTab({ taskId, items, setItems, currentUserId, userRole }: {
   );
 }
 
-// ─── Time tab ─────────────────────────────────────────────────────────────────
+// ─── Time tab ───────────────────────────────────────────────────────────────
 function TimeTab({ taskId, items, setItems, currentUserId, userRole }: {
   taskId: string; items: TimeEntry[] | null;
   setItems: (v: TimeEntry[]) => void; currentUserId: string; userRole: string;
@@ -663,7 +679,7 @@ function TimeTab({ taskId, items, setItems, currentUserId, userRole }: {
   );
 }
 
-// ─── Activity tab ─────────────────────────────────────────────────────────────
+// ─── Activity tab ───────────────────────────────────────────────────────────
 const ACTION_LABEL: Record<string,string> = {
   CREATED:"created", UPDATED:"updated", DELETED:"deleted",
   ARCHIVED:"archived", RESTORED:"restored", INVITED:"invited",

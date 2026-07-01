@@ -1,8 +1,7 @@
-// PASTE LOCATION: src/app/api/tasks/[id]/route.ts
-// Create a folder literally named "[id]" with square brackets, inside src/app/api/tasks/
+// PASTE LOCATION: src/app/api/tasks/[id]/route.ts (overwrite entire file)
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { taskRepository, writeAuditLog } from "@/lib/db/tenant";
+import { taskRepository, writeAuditLog, createNotification } from "@/lib/db/tenant";
 import { requirePermission, UnauthorizedError } from "@/lib/auth/permissions";
 import { updateTaskSchema } from "@/validations/project";
 import { Role } from "@prisma/client";
@@ -44,6 +43,20 @@ export async function PATCH(req: Request, { params }: RouteParams) {
 
     const { dueDate, assigneeId, ...rest } = parsed.data;
 
+    // Grab the current state before overwriting it — we need the previous
+    // assigneeId to detect an actual reassignment vs. an unrelated update.
+    const existingTask = await taskRepository(ctx).findById(id, {
+      select: {
+        title: true,
+        assigneeId: true,
+        project: { select: { name: true } },
+      },
+    });
+
+    if (!existingTask) {
+      return NextResponse.json({ success: false, message: "Task not found" }, { status: 404 });
+    }
+
     const result = await taskRepository(ctx).update(id, {
       ...rest,
       ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
@@ -62,6 +75,22 @@ export async function PATCH(req: Request, { params }: RouteParams) {
       entityId: id,
       metadata: rest,
     });
+
+    // Notify only on an actual reassignment to someone new, and not when
+    // people assign tasks to themselves.
+    const wasReassigned = assigneeId !== undefined && assigneeId !== existingTask.assigneeId;
+    if (wasReassigned && assigneeId && assigneeId !== ctx.userId) {
+      await createNotification({
+        tenantId: ctx.tenantId,
+        organizationId: ctx.organizationId,
+        userId: assigneeId,
+        type: "TASK_ASSIGNED",
+        title: "Task assigned to you",
+        body: `You were assigned "${existingTask.title}" in ${existingTask.project.name}`,
+        entityId: id,
+        entityType: "task",
+      });
+    }
 
     return NextResponse.json({ success: true, data: { id } });
   } catch (error) {

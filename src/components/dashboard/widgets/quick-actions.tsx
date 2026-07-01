@@ -1,4 +1,4 @@
-// PASTE LOCATION: src/components/dashboard/widgets/quick-actions.tsx
+// PASTE LOCATION: src/components/dashboard/widgets/quick-actions.tsx (overwrite entire file)
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -10,7 +10,7 @@ export function QuickActions({ canInvite }: { canInvite: boolean }) {
 
   return (
     <div className="flex flex-wrap gap-2">
-      <Button variant="outline" size="sm" onClick={() => router.push("/projects")}>
+      <Button variant="outline" size="sm" onClick={() => router.push("/projects?create=1")}>
         <FolderPlus className="size-3.5" />
         New project
       </Button>

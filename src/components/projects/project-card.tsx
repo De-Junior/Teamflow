@@ -277,7 +277,7 @@ export function ProjectCard({
               <Calendar className={cn("size-3", isOverdue && "text-destructive")} />
               {project.dueDate ? (
                 <span className={cn(isOverdue && "text-destructive font-medium")}>
-                  {new Date(project.dueDate).toLocaleDateString(undefined, {
+                  {new Date(project.dueDate).toLocaleDateString("en-GB", {
                     month: "short", day: "numeric", year: "numeric",
                   })}
                 </span>
@@ -307,7 +307,7 @@ export function ProjectCard({
 
           {/* Last updated */}
           <p className="mt-2 pl-4 text-xs text-muted-foreground">
-            Updated {new Date(project.updatedAt).toLocaleDateString(undefined, {
+            Updated {new Date(project.updatedAt).toLocaleDateString("en-GB", {
               month: "short", day: "numeric",
             })}
           </p>
