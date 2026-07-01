@@ -512,8 +512,8 @@ MIT — see `LICENSE` for details.
 
 | Field | Value |
 |---|---|
-| Email | `recruiter@teamflow.dev` |
-| Password | `Password123` |
+| Email | `recruiter@teamflow-demo.com` |
+| Password | `Demo1234!` |
 
 ---
 
