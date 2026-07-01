@@ -1,4 +1,3 @@
-// PASTE LOCATION: project root (same folder as package.json), NOT inside /prisma
 import "dotenv/config";
 import { defineConfig, env } from "prisma/config";
 
@@ -11,6 +10,7 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
+    seed: "tsx prisma/seed.ts",
   },
   datasource: {
     url: withConnectTimeout(env("DIRECT_URL")),
