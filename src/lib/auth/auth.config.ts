@@ -7,6 +7,8 @@ import { prisma } from "@/lib/db/prisma";
 import { loginSchema } from "@/validations/auth";
 
 export const authConfig: NextAuthConfig = {
+  trustHost: true,
+
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
