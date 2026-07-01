@@ -94,7 +94,7 @@ model Organization {
   website   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
+  archivedAt DateTime?
   // Relations
   memberships   Membership[]
   projects      Project[]
@@ -329,8 +329,8 @@ model File {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   uploadedBy   User         @relation(fields: [uploadedById], references: [id])
-  project      Project?     @relation(fields: [projectId], references: [id])
-  task         Task?        @relation(fields: [taskId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task    Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([taskId])

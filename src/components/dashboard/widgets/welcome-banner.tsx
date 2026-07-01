@@ -1,12 +1,27 @@
-// PASTE LOCATION: src/components/dashboard/widgets/welcome-banner.tsx
+// PASTE LOCATION: src/components/dashboard/widgets/welcome-banner.tsx (overwrite entire file)
 import Image from "next/image";
+import { SubscriptionPlan } from "@prisma/client";
+
+const PLAN_LABELS: Record<SubscriptionPlan, string> = {
+  FREE: "Free plan",
+  PROFESSIONAL: "Professional",
+  ENTERPRISE: "Enterprise",
+};
+
+const PLAN_STYLES: Record<SubscriptionPlan, string> = {
+  FREE: "bg-muted text-muted-foreground",
+  PROFESSIONAL: "bg-primary/10 text-primary",
+  ENTERPRISE: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+};
 
 export function WelcomeBanner({
   userName,
   organizationName,
+  plan = "FREE",
 }: {
   userName: string | null;
   organizationName: string;
+  plan?: SubscriptionPlan;
 }) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-card p-5">
@@ -29,10 +44,9 @@ export function WelcomeBanner({
       </div>
 
       <span
-        title="Billing isn't set up yet"
-        className="shrink-0 rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
+        className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${PLAN_STYLES[plan]}`}
       >
-        Free plan
+        {PLAN_LABELS[plan]}
       </span>
     </div>
   );

@@ -1,4 +1,4 @@
-// PASTE LOCATION: src/lib/auth/auth.config.ts
+// PASTE LOCATION: src/lib/auth/auth.config.ts (overwrite entire file)
 import type { NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
@@ -31,10 +31,6 @@ export const authConfig: NextAuthConfig = {
 
         const passwordMatch = await bcrypt.compare(password, user.password);
         if (!passwordMatch) return null;
-
-        if (!user.emailVerified) {
-          throw new Error("EMAIL_NOT_VERIFIED");
-        }
 
         return {
           id: user.id,

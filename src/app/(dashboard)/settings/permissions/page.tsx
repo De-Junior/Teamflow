@@ -77,7 +77,7 @@ export default function PermissionsSettingsPage() {
                           return (
                             <td key={role} className="py-2 pr-3 text-center">
                               {granted && (
-                                <Check className="mx-auto size-4 text-[var(--status-done)]" />
+                                <Check className="mx-auto size-4 text-(--status-done)" />
                               )}
                             </td>
                           );

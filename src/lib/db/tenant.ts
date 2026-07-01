@@ -7,6 +7,11 @@
  * data because every query is automatically scoped.
  */
 
+// PASTE LOCATION: src/lib/db/tenant.ts (overwrite entire file)
+// This is the full file as it stood after the project/task/writeAuditLog
+// updates, with fileRepository added alongside projectRepository and
+// taskRepository. Nothing else changed.
+
 import { prisma } from "./prisma";
 import { Prisma } from "@prisma/client";
 
@@ -15,10 +20,6 @@ export type TenantContext = {
   organizationId: string;
   userId: string;
 };
-
-// PASTE LOCATION: src/lib/db/tenant.ts
-// Replace ONLY the projectRepository and taskRepository functions with the versions below.
-// Everything else in the file (writeAuditLog, TenantContext, imports) stays the same.
 
 export function projectRepository(ctx: TenantContext) {
   return {
@@ -117,6 +118,46 @@ export function taskRepository(ctx: TenantContext) {
   };
 }
 
+export function fileRepository(ctx: TenantContext) {
+  return {
+    findMany<T extends Omit<Prisma.FileFindManyArgs, "where">>(
+      args?: T & { where?: Prisma.FileWhereInput }
+    ): Promise<Prisma.FileGetPayload<T>[]> {
+      return prisma.file.findMany({
+        ...args,
+        where: { ...args?.where, tenantId: ctx.tenantId },
+      } as Prisma.FileFindManyArgs) as Promise<Prisma.FileGetPayload<T>[]>;
+    },
+
+    findById<T extends Omit<Prisma.FileFindFirstArgs, "where">>(
+      id: string,
+      args?: T
+    ): Promise<Prisma.FileGetPayload<T> | null> {
+      return prisma.file.findFirst({
+        ...args,
+        where: { id, tenantId: ctx.tenantId },
+      } as Prisma.FileFindFirstArgs) as Promise<Prisma.FileGetPayload<T> | null>;
+    },
+
+    create: (
+      data: Omit<Prisma.FileCreateInput, "tenantId" | "organization" | "uploadedBy">
+    ) =>
+      prisma.file.create({
+        data: {
+          ...data,
+          tenantId: ctx.tenantId,
+          organization: { connect: { id: ctx.organizationId } },
+          uploadedBy: { connect: { id: ctx.userId } },
+        },
+      }),
+
+    delete: (id: string) =>
+      prisma.file.deleteMany({
+        where: { id, tenantId: ctx.tenantId },
+      }),
+  };
+}
+
 // ─── Membership helpers ───────────────────────────────────────────────────────
 
 export async function getUserMembership(userId: string, organizationId: string) {
@@ -133,10 +174,6 @@ export async function requireMembership(userId: string, organizationId: string) 
 }
 
 // ─── Audit log helper ─────────────────────────────────────────────────────────
-
-// PASTE LOCATION: src/lib/db/tenant.ts
-// Replace ONLY the writeAuditLog function (near the bottom of the file) with this version.
-// Everything else in the file stays the same.
 
 export async function writeAuditLog(
   ctx: TenantContext,

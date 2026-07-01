@@ -9,6 +9,7 @@ import { TeamProductivityChart } from "@/components/analytics/team-productivity-
 import { TeamPerformance } from "@/components/analytics/team-performance";
 import { ProjectComparison } from "@/components/analytics/project-comparison";
 import { ExportButton } from "@/components/analytics/export-button";
+import { AIInsightsPanel } from "@/components/analytics/ai-insights-panel";
 
 export default async function AnalyticsPage({
   searchParams,
@@ -82,6 +83,7 @@ export default async function AnalyticsPage({
           <TeamPerformance data={data.teamPerformance} />
 
           <ProjectComparison projects={data.projectComparison} />
+          <AIInsightsPanel range={rangeKey} />
         </>
       )}
     </div>

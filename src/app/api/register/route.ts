@@ -1,4 +1,4 @@
-// PASTE LOCATION: src/app/api/register/route.ts
+// PASTE LOCATION: src/app/api/register/route.ts (overwrite entire file)
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db/prisma";
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
           name,
           email,
           password: hashedPassword,
-          emailVerified: process.env.NODE_ENV === "development" ? new Date() : null,
+          emailVerified: new Date(),
         },
       });
 
