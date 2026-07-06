@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/lib/auth/auth.config.ts (overwrite entire file)
 import type { NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
