@@ -1,9 +1,13 @@
-// PASTE LOCATION: src/lib/stripe/client.ts (new file)
+﻿import Stripe from "stripe";
 
-import Stripe from "stripe";
+let _stripe: Stripe | null = null;
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error("STRIPE_SECRET_KEY is not set");
+export function getStripe(): Stripe {
+  if (!_stripe) {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error("STRIPE_SECRET_KEY is not set");
+    }
+    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  }
+  return _stripe;
 }
-
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);

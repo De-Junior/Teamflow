@@ -1,6 +1,5 @@
-// PASTE LOCATION: src/app/api/webhooks/stripe/route.ts (overwrite entire file)
-import { NextResponse } from "next/server";
-import { stripe } from "@/lib/stripe/client";
+﻿import { NextResponse } from "next/server";
+import { getStripe } from "@/lib/stripe/client";
 import { planFromPriceId } from "@/lib/stripe/plans";
 import { prisma } from "@/lib/db/prisma";
 import Stripe from "stripe";
@@ -37,6 +36,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No signature" }, { status: 400 });
   }
 
+  const stripe = getStripe();
   let event: Stripe.Event;
 
   try {
@@ -50,13 +50,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  // Idempotency — skip events we've already processed
+  // Idempotency - skip events we've already processed
   try {
     await prisma.stripeWebhookEvent.create({
       data: { stripeEventId: event.id, type: event.type },
     });
   } catch {
-    // Unique constraint violation means duplicate event — skip silently
+    // Unique constraint violation means duplicate event - skip silently
     return NextResponse.json({ received: true });
   }
 

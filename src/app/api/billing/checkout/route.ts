@@ -1,8 +1,7 @@
-// PASTE LOCATION: src/app/api/billing/checkout/route.ts (new file)
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
-import { stripe } from "@/lib/stripe/client";
+import { getStripe } from "@/lib/stripe/client";
 import { PLAN_PRICE_IDS } from "@/lib/stripe/plans";
 import { requirePermission, UnauthorizedError } from "@/lib/auth/permissions";
 import { createCheckoutSchema } from "@/validations/billing";
@@ -40,6 +39,7 @@ export async function POST(req: Request) {
       );
     }
 
+    const stripe = getStripe();
     const priceId = PLAN_PRICE_IDS[parsed.data.plan];
 
     // Subscription is 1:1 with Organization (organizationId is unique on the model),

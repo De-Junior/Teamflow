@@ -1,8 +1,7 @@
-// PASTE LOCATION: src/app/api/billing/portal/route.ts (new file)
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
-import { stripe } from "@/lib/stripe/client";
+import { getStripe } from "@/lib/stripe/client";
 import { requirePermission, UnauthorizedError } from "@/lib/auth/permissions";
 import { Role } from "@prisma/client";
 
@@ -39,6 +38,7 @@ export async function POST() {
       );
     }
 
+    const stripe = getStripe();
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: subscription.stripeCustomerId,
       return_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings/organization`,
