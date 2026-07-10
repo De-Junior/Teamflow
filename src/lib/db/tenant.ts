@@ -10,6 +10,9 @@
 import { prisma } from "./prisma";
 import { Prisma } from "@prisma/client";
 
+import { getPusher } from "@/lib/pusher/server";
+import { userChannel } from "@/lib/pusher/channels";
+
 export type TenantContext = {
   tenantId: string;
   organizationId: string;
@@ -273,7 +276,7 @@ export async function createNotification(params: {
   entityId?: string;
   entityType?: string;
 }) {
-  return prisma.notification.create({
+  const notification = await prisma.notification.create({
     data: {
       tenantId: params.tenantId,
       organizationId: params.organizationId,
@@ -285,4 +288,13 @@ export async function createNotification(params: {
       entityType: params.entityType,
     },
   });
+
+  // Best-effort: realtime push should never break the calling flow.
+  try {
+    await getPusher().trigger(userChannel(params.userId), "notification:new", notification);
+  } catch (err) {
+    console.error("[PUSHER_TRIGGER_ERROR]", err);
+  }
+
+  return notification;
 }

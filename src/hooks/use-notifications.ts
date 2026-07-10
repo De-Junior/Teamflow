@@ -1,8 +1,11 @@
 // PASTE LOCATION: src/hooks/use-notifications.ts (overwrite entire file)
-
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
+import { getPusherClient } from "@/lib/pusher/client";
+import { userChannel } from "@/lib/pusher/channels";
+
 
 interface Notification {
   id: string;
@@ -18,6 +21,7 @@ interface Notification {
 const POLL_INTERVAL_MS = 15000;
 
 export function useNotifications() {
+  const { data: session } = useSession();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -57,13 +61,10 @@ export function useNotifications() {
     });
   }, []);
 
+  // Initial fetch + polling fallback (in case a Pusher event is missed)
   useEffect(() => {
     let cancelled = false;
 
-    // Wrapping in an async IIFE (instead of calling fetchNotifications
-    // directly) so the effect body itself never synchronously triggers
-    // setState — the linter can verify the setState calls only happen
-    // after the awaited fetch resolves, inside a microtask.
     (async () => {
       if (!cancelled) await fetchNotifications();
     })();
@@ -77,6 +78,27 @@ export function useNotifications() {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [fetchNotifications]);
+
+  // Realtime subscription
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+
+    const pusherClient = getPusherClient();
+    const channel = pusherClient.subscribe(userChannel(userId));
+
+    const handleNew = (notification: Notification) => {
+      setNotifications((prev) => [notification, ...prev]);
+      setUnreadCount((prev) => prev + 1);
+    };
+
+    channel.bind("notification:new", handleNew);
+
+    return () => {
+      channel.unbind("notification:new", handleNew);
+      pusherClient.unsubscribe(userChannel(userId));
+    };
+  }, [session?.user?.id]);
 
   return { notifications, unreadCount, loading, markRead, markAllRead };
 }
