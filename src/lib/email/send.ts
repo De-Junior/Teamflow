@@ -1,7 +1,7 @@
 // PASTE LOCATION: src/lib/email/send.ts (new file)
 import { prisma } from "@/lib/db/prisma";
 import { EmailType } from "@prisma/client";
-import { resend, EMAIL_FROM } from "./client";
+import { getResend, EMAIL_FROM } from "./client";
 import { InvitationEmail } from "./templates/invitation";
 import { InvitationReminderEmail } from "./templates/invitation-reminder";
 import { PasswordResetEmail } from "./templates/password-reset";
@@ -53,7 +53,7 @@ export async function sendTaskAssignedEmail(params: {
   taskUrl: string;
 }) {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: EMAIL_FROM,
       to: params.to,
       subject: `You were assigned "${params.taskTitle}" in ${params.projectName}`,
@@ -87,7 +87,7 @@ export async function sendInvitationEmail(params: {
   inviteUrl: string;
 }) {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: EMAIL_FROM,
       to: params.to,
       subject: `You've been invited to join ${params.organizationName} on TeamFlow`,
@@ -119,7 +119,7 @@ export async function sendInvitationReminderEmail(params: {
   inviteUrl: string;
 }) {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: EMAIL_FROM,
       to: params.to,
       subject: `Reminder: your invitation to ${params.organizationName} is waiting`,
@@ -144,7 +144,7 @@ export async function sendInvitationReminderEmail(params: {
 
 export async function sendPasswordResetEmail(params: { to: string; resetUrl: string }) {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: EMAIL_FROM,
       to: params.to,
       subject: "Reset your TeamFlow password",
@@ -165,7 +165,7 @@ export async function sendPasswordResetEmail(params: { to: string; resetUrl: str
 
 export async function sendVerificationEmail(params: { to: string; name: string; verifyUrl: string }) {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: EMAIL_FROM,
       to: params.to,
       subject: "Verify your email for TeamFlow",
