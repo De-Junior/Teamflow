@@ -1,8 +1,9 @@
-// PASTE LOCATION: src/app/api/forgot-password/route.ts
+// PASTE LOCATION: src/app/api/forgot-password/route.ts (overwrite entire file)
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/db/prisma";
 import { forgotPasswordSchema } from "@/validations/auth";
+import { sendPasswordResetEmail } from "@/lib/email/send";
 
 export async function POST(req: Request) {
   try {
@@ -37,6 +38,8 @@ export async function POST(req: Request) {
     });
 
     const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${token}`;
+
+    await sendPasswordResetEmail({ to: email, resetUrl });
 
     if (process.env.NODE_ENV === "development") {
       console.log(`[PASSWORD_RESET_LINK] ${resetUrl}`);

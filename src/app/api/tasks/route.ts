@@ -4,6 +4,8 @@ import { taskRepository, projectRepository, writeAuditLog, createNotification } 
 import { requirePermission, UnauthorizedError } from "@/lib/auth/permissions";
 import { createTaskSchema } from "@/validations/project";
 import { Role } from "@prisma/client";
+import { prisma } from "@/lib/db/prisma";
+import { sendTaskAssignedEmail } from "@/lib/email/send";
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -39,9 +41,6 @@ export async function POST(req: Request) {
 
     const { dueDate, assigneeId, projectId, ...rest } = parsed.data;
 
-    // Verify the project belongs to this tenant before attaching a task to
-    // it - without this check a caller could pass a projectId from another
-    // organization and create a task outside their own tenant boundary.
     const project = await projectRepository(ctx).findById(projectId, {
       select: { id: true, name: true },
     });
@@ -64,7 +63,6 @@ export async function POST(req: Request) {
       metadata: { title: task.title, projectId },
     });
 
-    // Notify the assignee, unless they assigned the task to themselves.
     if (assigneeId && assigneeId !== ctx.userId) {
       await createNotification({
         tenantId: ctx.tenantId,
@@ -76,14 +74,28 @@ export async function POST(req: Request) {
         entityId: task.id,
         entityType: "task",
       });
+
+      const assignee = await prisma.user.findUnique({
+        where: { id: assigneeId },
+        select: { email: true, name: true },
+      });
+
+      if (assignee) {
+        await sendTaskAssignedEmail({
+          tenantId: ctx.tenantId,
+          to: assignee.email,
+          assigneeName: assignee.name ?? "there",
+          assignerName: session.user.name ?? "A teammate",
+          taskTitle: task.title,
+          projectName: project.name,
+          taskUrl: `${process.env.NEXT_PUBLIC_APP_URL}/projects/${projectId}`,
+        });
+      }
     }
 
-    return NextResponse.json({ success: true, data: { id: task.id } });
+    return NextResponse.json({ success: true, data: task }, { status: 201 });
   } catch (error) {
-    console.error("[TASK_CREATE_ERROR]", error);
-    return NextResponse.json(
-      { success: false, message: "Something went wrong. Please try again." },
-      { status: 500 }
-    );
+    console.error(error);
+    return NextResponse.json({ success: false, message: "Something went wrong" }, { status: 500 });
   }
 }

@@ -5,6 +5,7 @@ import { hasPermission } from "@/lib/auth/permissions";
 import type { Role, SubscriptionPlan } from "@prisma/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+import { redirect } from "next/navigation";
 import { QuickActions } from "@/components/dashboard/widgets/quick-actions";
 import { OrgStatisticsWidget } from "@/components/dashboard/widgets/org-statistics";
 import { MyTasksWidget } from "@/components/dashboard/widgets/my-tasks";
@@ -17,9 +18,17 @@ import { FolderKanban, WifiOff, Activity, Users2, Bell, HardDrive } from "lucide
 
 export default async function DashboardPage() {
   const session = await auth();
-  const tenantId = session!.user.organizationId;
-  const userId = session!.user.id;
-  const role = session!.user.role as Role;
+
+  // Defense in depth: the proxy already guards this route, but a page
+  // component should never trust a non-null assertion on session data it
+  // depends on for tenant-scoped queries below.
+  if (!session?.user?.organizationId) {
+    redirect("/login");
+  }
+
+  const tenantId = session.user.organizationId;
+  const userId = session.user.id;
+  const role = session.user.role as Role;
   const canInvite = hasPermission(role, "members:invite");
 
   const now = new Date();

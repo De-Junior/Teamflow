@@ -1,9 +1,11 @@
 // PASTE LOCATION: src/app/api/register/route.ts (overwrite entire file)
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db/prisma";
 import { registerSchema } from "@/validations/auth";
 import { Prisma, Role, InvitationStatus } from "@prisma/client";
+import { sendVerificationEmail } from "@/lib/email/send";
 
 function slugify(name: string) {
   return name
@@ -64,13 +66,18 @@ export async function POST(req: Request) {
       }
     }
 
+    // Invited users proved control of this exact email address via the
+    // invite flow, so they skip verification. Self-serve signups (anyone
+    // typing any email into the public register form) require it.
+    const isInviteFlow = Boolean(invitation);
+
     const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const user = await tx.user.create({
         data: {
           name,
           email,
           password: hashedPassword,
-          emailVerified: new Date(),
+          emailVerified: isInviteFlow ? new Date() : null,
         },
       });
 
@@ -127,6 +134,23 @@ export async function POST(req: Request) {
 
       return { user, organization };
     });
+
+    if (!isInviteFlow) {
+      const token = crypto.randomBytes(32).toString("hex");
+      const expires = new Date(Date.now() + 1000 * 60 * 60 * 24); // 24h
+
+      await prisma.verificationToken.deleteMany({ where: { identifier: email } });
+      await prisma.verificationToken.create({
+        data: { identifier: email, token, expires },
+      });
+
+      const verifyUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${token}`;
+      await sendVerificationEmail({ to: email, name, verifyUrl });
+
+      if (process.env.NODE_ENV === "development") {
+        console.log(`[VERIFY_EMAIL_LINK] ${verifyUrl}`);
+      }
+    }
 
     return NextResponse.json({
       success: true,

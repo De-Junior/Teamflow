@@ -5,7 +5,7 @@ import { Role } from "@prisma/client";
 const ASSIGNABLE_ROLES = [Role.OWNER, Role.MANAGER, Role.DEVELOPER, Role.VIEWER] as const;
 
 export const inviteMemberSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  email: z.string().trim().toLowerCase().email("Invalid email address"),
   role: z.enum(ASSIGNABLE_ROLES),
 });
 

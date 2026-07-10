@@ -6,6 +6,7 @@ import { createNotification } from "@/lib/db/tenant";
 import { requirePermission, UnauthorizedError } from "@/lib/auth/permissions";
 import { inviteMemberSchema } from "@/validations/team";
 import { Role, InvitationStatus } from "@prisma/client";
+import { sendInvitationEmail } from "@/lib/email/send";
 
 export async function GET() {
   const session = await auth();
@@ -85,20 +86,19 @@ export async function POST(req: Request) {
       },
     });
 
+    const org = await prisma.organization.findUnique({
+      where: { id: tenantId },
+      select: { name: true },
+    });
+
     // If the invited email already belongs to a registered user, notify
-    // them in-app immediately. If not, they have no User row yet — the
-    // only way to reach them right now is the invite link/email below.
+    // them in-app immediately in addition to the email below.
     const existingUser = await prisma.user.findUnique({
       where: { email },
       select: { id: true },
     });
 
     if (existingUser) {
-      const org = await prisma.organization.findUnique({
-        where: { id: tenantId },
-        select: { name: true },
-      });
-
       await createNotification({
         tenantId,
         organizationId: tenantId,
@@ -112,6 +112,17 @@ export async function POST(req: Request) {
     }
 
     const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${invitation.token}`;
+
+    // Fire-and-forget-style await: sendInvitationEmail never throws, so this
+    // cannot fail the invitation creation itself. Failures land in EmailLog.
+    await sendInvitationEmail({
+      tenantId,
+      to: email,
+      organizationName: org?.name ?? "an organization",
+      inviterName: session.user.name ?? "A teammate",
+      role,
+      inviteUrl,
+    });
 
     if (process.env.NODE_ENV === "development") {
       console.log(`[INVITATION_LINK] ${inviteUrl}`);

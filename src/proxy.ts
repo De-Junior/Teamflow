@@ -14,6 +14,7 @@ const PUBLIC_ROUTES = [
   "/api/register",
   "/api/forgot-password",
   "/api/reset-password",
+  "/api/verify-email",
   "/api/webhooks",
   "/",
 ];
@@ -38,7 +39,12 @@ export default auth(async function proxy(req: NextRequest & { auth: unknown }) {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
-  if (!isPublic && !session?.user) {
+  // Require both a session AND an organizationId on it for protected routes.
+  // A session can exist without organizationId if the JWT was minted before
+  // a Membership row existed for the user (stale cookie, partial signup,
+  // race condition) — that's not a valid authenticated state for anything
+  // tenant-scoped, so treat it the same as "not logged in".
+  if (!isPublic && !session?.user?.organizationId) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);

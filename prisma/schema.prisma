@@ -79,18 +79,37 @@ enum AuditAction {
   LOGOUT
 }
 
+enum ActivityType {
+  PROJECT_CREATED
+  PROJECT_UPDATED
+  TASK_CREATED
+  TASK_COMPLETED
+  TASK_ASSIGNED
+  COMMENT_ADDED
+  MEMBER_ADDED
+  MEMBER_REMOVED
+}
+
+enum EmailType {
+  INVITATION
+  INVITATION_REMINDER
+  PASSWORD_RESET
+  EMAIL_VERIFICATION
+  TASK_ASSIGNED
+}
+
 // ─── Tenant (Organisation) ────────────────────────────────────────────────────
 
 model Organization {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  logo      String?
-  industry  String?
-  website   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  archivedAt DateTime?
+  id            String         @id @default(cuid())
+  name          String
+  slug          String         @unique
+  logo          String?
+  industry      String?
+  website       String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  archivedAt    DateTime?
   // Relations
   memberships   Membership[]
   projects      Project[]
@@ -99,6 +118,7 @@ model Organization {
   notifications Notification[]
   subscription  Subscription?
   files         File[]
+  activityLogs  ActivityLog[]
 
   @@index([slug])
 }
@@ -111,7 +131,7 @@ model User {
   email         String    @unique
   emailVerified DateTime?
   image         String?
-  password      String?   // null for OAuth users
+  password      String? // null for OAuth users
   phone         String?
   timezone      String?
   language      String?   @default("en")
@@ -120,20 +140,21 @@ model User {
   updatedAt     DateTime  @updatedAt
 
   // Relations
-  accounts        Account[]
-  sessions        Session[]
-  memberships     Membership[]
-  assignedTasks   Task[]          @relation("TaskAssignee")
-  createdTasks    Task[]          @relation("TaskCreator")
-  comments        Comment[]
-  notifications   Notification[]
-  auditLogs       AuditLog[]
-  invitationsSent Invitation[]    @relation("InvitedBy")
-  files           File[]
-  timeEntries     TimeEntry[]
-  preferences     UserPreferences?
-  activeSessions  ActiveSession[]
+  accounts           Account[]
+  sessions           Session[]
+  memberships        Membership[]
+  assignedTasks      Task[]           @relation("TaskAssignee")
+  createdTasks       Task[]           @relation("TaskCreator")
+  comments           Comment[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+  invitationsSent    Invitation[]     @relation("InvitedBy")
+  files              File[]
+  timeEntries        TimeEntry[]
+  preferences        UserPreferences?
+  activeSessions     ActiveSession[]
   projectMemberships ProjectMember[]
+  activityLogs       ActivityLog[]
 
   @@index([email])
 }
@@ -183,7 +204,7 @@ model VerificationToken {
 
 model Membership {
   id             String   @id @default(cuid())
-  tenantId       String   // = organizationId — explicit for query clarity
+  tenantId       String // = organizationId — explicit for query clarity
   userId         String
   organizationId String
   role           Role     @default(VIEWER)
@@ -235,10 +256,11 @@ model Project {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   tasks        Task[]
   files        File[]
   members      ProjectMember[]
+  activityLogs ActivityLog[]
 
   @@index([tenantId])
   @@index([organizationId])
@@ -337,16 +359,16 @@ model File {
   projectId      String?
   taskId         String?
   name           String
-  key            String   // S3 object key
+  key            String // S3 object key
   url            String
-  size           Int      // bytes
+  size           Int // bytes
   mimeType       String
   createdAt      DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   uploadedBy   User         @relation(fields: [uploadedById], references: [id])
-  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  task    Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task         Task?        @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([taskId])
@@ -364,8 +386,8 @@ model Notification {
   title          String
   body           String
   read           Boolean          @default(false)
-  entityId       String?          // e.g. taskId or projectId
-  entityType     String?          // "task" | "project"
+  entityId       String? // e.g. taskId or projectId
+  entityType     String? // "task" | "project"
   createdAt      DateTime         @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -383,9 +405,9 @@ model AuditLog {
   organizationId String
   userId         String
   action         AuditAction
-  entityType     String      // "task" | "project" | "user" | ...
+  entityType     String // "task" | "project" | "user" | ...
   entityId       String
-  metadata       Json?       // before/after state, extra context
+  metadata       Json? // before/after state, extra context
   ipAddress      String?
   userAgent      String?
   createdAt      DateTime    @default(now())
@@ -497,6 +519,7 @@ model ActiveSession {
   @@index([userId])
   @@index([sessionId])
 }
+
 model StripeWebhookEvent {
   id            String   @id @default(cuid())
   stripeEventId String   @unique
@@ -504,4 +527,41 @@ model StripeWebhookEvent {
   processedAt   DateTime @default(now())
 
   @@index([stripeEventId])
+}
+
+model ActivityLog {
+  id       String       @id @default(cuid())
+  tenantId String
+  type     ActivityType
+  message  String?
+  metadata Json?
+
+  actorId String
+  actor   User   @relation(fields: [actorId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([organizationId, createdAt])
+  @@index([projectId, createdAt])
+}
+
+model EmailLog {
+  id        String    @id @default(cuid())
+  tenantId  String? // null for user-level emails (password reset, verification)
+  type      EmailType
+  to        String
+  resendId  String? // Resend's message id, for later webhook correlation
+  status    String    @default("SENT") // "SENT" | "FAILED"
+  error     String?
+  createdAt DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([to])
 }

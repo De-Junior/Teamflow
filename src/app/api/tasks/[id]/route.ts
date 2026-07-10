@@ -1,10 +1,11 @@
-// PASTE LOCATION: src/app/api/tasks/[id]/route.ts (overwrite entire file)
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { taskRepository, writeAuditLog, createNotification } from "@/lib/db/tenant";
 import { requirePermission, UnauthorizedError } from "@/lib/auth/permissions";
 import { updateTaskSchema } from "@/validations/project";
 import { Role } from "@prisma/client";
+import { prisma } from "@/lib/db/prisma"; // adjust path if your Prisma client is exported elsewhere
+import { sendTaskAssignedEmail } from "@/lib/email/send";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -90,15 +91,29 @@ export async function PATCH(req: Request, { params }: RouteParams) {
         entityId: id,
         entityType: "task",
       });
+
+      const assignee = await prisma.user.findUnique({
+        where: { id: assigneeId },
+        select: { email: true, name: true },
+      });
+
+      if (assignee) {
+        await sendTaskAssignedEmail({
+          tenantId: ctx.tenantId,
+          to: assignee.email,
+          assigneeName: assignee.name ?? "there",
+          assignerName: session.user.name ?? "A teammate",
+          taskTitle: existingTask.title,
+          projectName: existingTask.project.name,
+          taskUrl: `${process.env.NEXT_PUBLIC_APP_URL}/projects/${existingTask.project.name}`,
+        });
+      }
     }
 
-    return NextResponse.json({ success: true, data: { id } });
+    return NextResponse.json({ success: true, data: result });
   } catch (error) {
-    console.error("[TASK_UPDATE_ERROR]", error);
-    return NextResponse.json(
-      { success: false, message: "Something went wrong. Please try again." },
-      { status: 500 }
-    );
+    console.error(error);
+    return NextResponse.json({ success: false, message: "Something went wrong" }, { status: 500 });
   }
 }
 

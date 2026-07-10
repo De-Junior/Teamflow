@@ -223,13 +223,20 @@ export async function writeAuditLog(
 }
 
 // ─── Notification helpers ─────────────────────────────────────────────────────
+//
+// Notifications are scoped by userId only, NOT tenantId. Unlike other
+// business data (projects, tasks, files), a notification's relevance is tied
+// to the recipient, not to which organization they're currently "active" in.
+// Invitation notifications specifically are ABOUT an org the user isn't a
+// member of yet, so filtering by ctx.tenantId would always exclude them.
+// This is still safe for tenant isolation: ctx.userId always comes from the
+// authenticated session, so a user can never fetch another user's notifications.
 
 export function notificationRepository(ctx: TenantContext) {
   return {
     findMany: (args?: { unreadOnly?: boolean; take?: number }) =>
       prisma.notification.findMany({
         where: {
-          tenantId: ctx.tenantId,
           userId: ctx.userId,
           ...(args?.unreadOnly ? { read: false } : {}),
         },
@@ -239,18 +246,18 @@ export function notificationRepository(ctx: TenantContext) {
 
     unreadCount: () =>
       prisma.notification.count({
-        where: { tenantId: ctx.tenantId, userId: ctx.userId, read: false },
+        where: { userId: ctx.userId, read: false },
       }),
 
     markRead: (id: string) =>
       prisma.notification.updateMany({
-        where: { id, tenantId: ctx.tenantId, userId: ctx.userId },
+        where: { id, userId: ctx.userId },
         data: { read: true },
       }),
 
     markAllRead: () =>
       prisma.notification.updateMany({
-        where: { tenantId: ctx.tenantId, userId: ctx.userId, read: false },
+        where: { userId: ctx.userId, read: false },
         data: { read: true },
       }),
   };
