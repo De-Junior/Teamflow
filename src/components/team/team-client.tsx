@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/team/team-client.tsx (create new file)
 "use client";
 
 import { useState, useMemo }         from "react";

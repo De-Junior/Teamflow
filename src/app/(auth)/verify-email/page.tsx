@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/(auth)/verify-email/page.tsx (replace entire file)
 "use client";
 
 import { Suspense, useEffect, useState } from "react";

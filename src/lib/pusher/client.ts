@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/lib/pusher/client.ts (new file)
 "use client";
 
 import PusherClient from "pusher-js";

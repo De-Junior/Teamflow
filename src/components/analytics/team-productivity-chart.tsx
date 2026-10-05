@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/analytics/team-productivity-chart.tsx
 "use client";
 
 import {

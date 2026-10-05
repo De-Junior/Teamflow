@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/analytics/team-performance.tsx
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Trophy, Clock, AlertTriangle } from "lucide-react";
 

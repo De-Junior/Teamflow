@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/settings/settings-tabs.tsx (overwrite entire file)
 "use client";
 
 import Link from "next/link";

@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/ui/card.tsx (overwrite entire file)
 import { cn } from "@/lib/utils";
 
 type DivProps = React.HTMLAttributes<HTMLDivElement> & { ref?: React.Ref<HTMLDivElement> };

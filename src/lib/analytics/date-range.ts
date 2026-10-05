@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/lib/analytics/date-range.ts
 export type RangeKey = "7d" | "30d" | "quarter" | "year" | "custom";
 
 export function resolveDateRange(

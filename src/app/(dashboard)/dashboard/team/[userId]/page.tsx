@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/(dashboard)/dashboard/team/[userId]/page.tsx (create new file + folder)
 import { notFound }    from "next/navigation";
 import Link            from "next/link";
 import { auth }        from "@/lib/auth";

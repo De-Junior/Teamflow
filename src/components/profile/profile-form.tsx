@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/profile/profile-form.tsx (create new file + folder)
 "use client";
 
 import { useState } from "react";

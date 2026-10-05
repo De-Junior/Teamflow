@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/analytics/trend-chart.tsx
 "use client";
 
 import {

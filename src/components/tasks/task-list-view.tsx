@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/tasks/task-list-view.tsx (create new file)
 "use client";
 
 import { cn }         from "@/lib/utils";

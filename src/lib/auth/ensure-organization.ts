@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/lib/auth/ensure-organization.ts
 import { prisma } from "@/lib/db/prisma";
 import { slugify } from "@/lib/utils/slugify";
 import { Prisma, Role } from "@prisma/client";

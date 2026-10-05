@@ -1,5 +1,3 @@
-// PASTE LOCATION: src/app/(auth)/invite/[token]/page.tsx
-// Create a folder literally named "[token]" with square brackets, inside src/app/(auth)/invite/
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { AcceptInvite } from "@/components/auth/accept-invite";
 

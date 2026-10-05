@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/tasks/task-card.tsx (overwrite entire file)
 "use client";
 
 import { useSortable }       from "@dnd-kit/sortable";

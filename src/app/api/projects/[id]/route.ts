@@ -1,5 +1,3 @@
-// PASTE LOCATION: src/app/api/projects/[id]/route.ts
-// Create a folder literally named "[id]" with square brackets, inside src/app/api/projects/
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { projectRepository, writeAuditLog } from "@/lib/db/tenant";

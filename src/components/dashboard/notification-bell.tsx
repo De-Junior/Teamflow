@@ -1,5 +1,3 @@
-// PASTE LOCATION: src/components/dashboard/notification-bell.tsx (new file)
-
 "use client";
 
 import { useState } from "react";

@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/dashboard/widgets/org-statistics.tsx
 import { Card, CardContent } from "@/components/ui/card";
 import { FolderKanban, ListChecks, Users, TrendingUp } from "lucide-react";
 

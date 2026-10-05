@@ -1,5 +1,3 @@
-// PASTE LOCATION: src/lib/stripe/plans.ts (new file)
-
 import { SubscriptionPlan } from "@prisma/client";
 
 export const PLAN_PRICE_IDS: Record<Exclude<SubscriptionPlan, "FREE">, string> = {

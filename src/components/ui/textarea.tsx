@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/ui/textarea.tsx (overwrite entire file)
 import { cn } from "@/lib/utils";
 
 function Textarea({

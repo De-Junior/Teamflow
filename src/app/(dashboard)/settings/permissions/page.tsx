@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/(dashboard)/settings/permissions/page.tsx
 import { Role } from "@prisma/client";
 import { getRolePermissions } from "@/lib/auth/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

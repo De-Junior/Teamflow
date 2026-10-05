@@ -1,5 +1,3 @@
-// PASTE LOCATION: src/lib/pusher/channels.ts (new file)
-
 export function userChannel(userId: string) {
   return `private-user-${userId}`;
 }

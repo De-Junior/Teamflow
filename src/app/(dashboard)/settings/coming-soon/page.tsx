@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/(dashboard)/settings/coming-soon/page.tsx
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CreditCard, Plug, HardDrive } from "lucide-react";
 

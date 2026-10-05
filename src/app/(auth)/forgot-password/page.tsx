@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/(auth)/forgot-password/page.tsx
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ForgotPasswordForm } from "@/components/auth/forgot-password-form";

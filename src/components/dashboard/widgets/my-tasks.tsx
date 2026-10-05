@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/dashboard/widgets/my-tasks.tsx
 "use client";
 
 import { useState } from "react";

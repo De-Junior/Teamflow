@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/hooks/use-notifications.ts (overwrite entire file)
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";

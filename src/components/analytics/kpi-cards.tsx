@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/analytics/kpi-cards.tsx
 import { Card, CardContent } from "@/components/ui/card";
 import { FolderKanban, ListChecks, TrendingUp, UserCheck } from "lucide-react";
 

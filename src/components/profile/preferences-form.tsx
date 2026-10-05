@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/profile/preferences-form.tsx (create new file)
 "use client";
 
 import { useState, useEffect } from "react";

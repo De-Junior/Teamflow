@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/team/member-row.tsx (overwrite entire file)
 "use client";
 
 import { useState }          from "react";

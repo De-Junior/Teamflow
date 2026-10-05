@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/api/projects/route.ts
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { projectRepository, writeAuditLog } from "@/lib/db/tenant";

@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/(dashboard)/settings/billing/page.tsx (new file)
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/db/prisma";

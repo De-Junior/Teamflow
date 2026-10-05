@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/projects/edit-project-dialog.tsx (create new file)
 "use client";
 
 import { useState } from "react";

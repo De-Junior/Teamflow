@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/(dashboard)/dashboard/profile/page.tsx (overwrite entire file)
 import { auth }         from "@/lib/auth";
 import { prisma }       from "@/lib/db/prisma";
 import { ProfileClient }from "@/components/profile/profile-client";

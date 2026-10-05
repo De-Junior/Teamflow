@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/dashboard/widgets/quick-actions.tsx (overwrite entire file)
 "use client";
 
 import { useRouter } from "next/navigation";

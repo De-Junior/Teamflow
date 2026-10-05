@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/projects/delete-project-button.tsx
 "use client";
 
 import { useState } from "react";

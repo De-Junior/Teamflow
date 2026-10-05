@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/lib/email/templates/invitation.tsx (new file)
 import { Body, Button, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
 
 interface InvitationEmailProps {

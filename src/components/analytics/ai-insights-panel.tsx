@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/analytics/ai-insights-panel.tsx (overwrite entire file)
 "use client";
 
 import { useState } from "react";

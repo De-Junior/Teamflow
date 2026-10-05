@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/api/tasks/[id]/activity/route.ts (create folder + file)
 import { NextResponse } from "next/server";
 import { auth }         from "@/lib/auth";
 import { prisma }       from "@/lib/db/prisma";

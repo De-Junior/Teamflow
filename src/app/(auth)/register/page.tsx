@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/(auth)/register/page.tsx
 import Link from "next/link";
 import { Suspense } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";

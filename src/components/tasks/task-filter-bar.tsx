@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/tasks/task-filter-bar.tsx (create new file)
 "use client";
 
 import { Input }  from "@/components/ui/input";

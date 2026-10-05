@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/settings/danger-zone.tsx (new file)
 "use client";
 
 import { useState } from "react";

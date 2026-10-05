@@ -1,5 +1,3 @@
-// PASTE LOCATION: src/app/api/projects/[id]/duplicate/route.ts
-// Create folder named "duplicate" inside src/app/api/projects/[id]/
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { projectRepository, writeAuditLog } from "@/lib/db/tenant";

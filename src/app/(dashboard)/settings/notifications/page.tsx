@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/(dashboard)/settings/notifications/page.tsx
 "use client";
 
 import { useState } from "react";

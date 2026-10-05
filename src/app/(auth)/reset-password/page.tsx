@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/(auth)/reset-password/page.tsx
 import { Suspense } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ResetPasswordForm } from "@/components/auth/reset-password-form";

@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/tasks/task-calendar-view.tsx (create new file)
 "use client";
 
 import { useState }      from "react";

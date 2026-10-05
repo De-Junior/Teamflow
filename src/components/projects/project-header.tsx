@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/projects/project-header.tsx (create new file)
 "use client";
 
 import { cn }        from "@/lib/utils";

@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/types/next-auth.d.ts (overwrite entire file)
 import type { DefaultSession } from "next-auth";
 
 declare module "next-auth" {

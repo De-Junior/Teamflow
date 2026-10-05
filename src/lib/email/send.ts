@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/lib/email/send.ts (new file)
 import { prisma } from "@/lib/db/prisma";
 import { EmailType } from "@prisma/client";
 import { getResend, EMAIL_FROM } from "./client";

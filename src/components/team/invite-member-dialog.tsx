@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/team/invite-member-dialog.tsx
 "use client";
 
 import { useState } from "react";

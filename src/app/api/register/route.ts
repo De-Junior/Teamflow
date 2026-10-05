@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/api/register/route.ts (overwrite entire file)
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";

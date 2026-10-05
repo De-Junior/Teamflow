@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/api/users/sessions/touch/route.ts (create new file + folder)
 import { NextResponse } from "next/server";
 import { auth }         from "@/lib/auth";
 import { prisma }       from "@/lib/db/prisma";

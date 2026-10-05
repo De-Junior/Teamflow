@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/dashboard/widgets/open-invitations.tsx
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Mail, ArrowRight } from "lucide-react";

@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/profile/my-statistics-panel.tsx (create new file)
 "use client";
 
 import { useState, useEffect } from "react";

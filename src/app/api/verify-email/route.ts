@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/api/verify-email/route.ts (new file)
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 

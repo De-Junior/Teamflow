@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/lib/ai/analyze.ts (new file)
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { getAnalyticsData } from "@/lib/analytics/get-analytics-data";
 

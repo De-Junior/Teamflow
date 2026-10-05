@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/(dashboard)/settings/layout.tsx (overwrite entire file)
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/auth/permissions";
 import { Role } from "@prisma/client";

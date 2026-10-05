@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/api/reset-password/route.ts (overwrite entire file)
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db/prisma";

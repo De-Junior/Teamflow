@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/auth/accept-invite.tsx
 "use client";
 
 import { useEffect, useState } from "react";

@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/dashboard/pending-invitations-banner.tsx
 "use client";
 
 import { useEffect, useState } from "react";

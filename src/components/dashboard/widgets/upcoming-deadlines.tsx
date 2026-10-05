@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/dashboard/widgets/upcoming-deadlines.tsx
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar } from "lucide-react";

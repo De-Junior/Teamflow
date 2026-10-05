@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/dashboard/widgets/coming-soon.tsx
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { LucideIcon } from "lucide-react";
 

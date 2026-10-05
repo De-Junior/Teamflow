@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/lib/pusher/server.ts (replace entire file)
 import PusherServer from "pusher";
 
 let _pusher: PusherServer | null = null;

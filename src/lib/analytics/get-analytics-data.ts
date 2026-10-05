@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/lib/analytics/get-analytics-data.ts
 import { prisma } from "@/lib/db/prisma";
 import { buildBuckets } from "@/lib/analytics/date-range";
 

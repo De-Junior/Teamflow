@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/dashboard/widgets/recent-projects.tsx
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowRight } from "lucide-react";

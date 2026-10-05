@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/auth/reset-password-form.tsx (overwrite entire file)
 "use client";
 
 import { useState } from "react";

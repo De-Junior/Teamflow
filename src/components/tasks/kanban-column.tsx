@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/tasks/kanban-column.tsx (overwrite entire file)
 "use client";
 
 import { useDroppable }                         from "@dnd-kit/core";

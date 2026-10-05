@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/settings/org-name-form.tsx (create new file)
 "use client";
 
 import { useState } from "react";

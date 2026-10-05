@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/auth/login-form.tsx (overwrite entire file)
 "use client";
 
 import { useState } from "react";

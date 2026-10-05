@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/team/invitation-row.tsx (create new file)
 "use client";
 
 import { useState }     from "react";

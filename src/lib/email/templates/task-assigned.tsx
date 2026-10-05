@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/lib/email/templates/task-assigned.tsx (new file)
 import { Body, Button, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
 
 interface TaskAssignedEmailProps {

@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/projects/create-project-dialog.tsx (overwrite entire file)
 "use client";
 
 import { useState } from "react";

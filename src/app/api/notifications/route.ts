@@ -1,5 +1,3 @@
-// PASTE LOCATION: src/app/api/notifications/route.ts (new file)
-
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { notificationRepository } from "@/lib/db/tenant";

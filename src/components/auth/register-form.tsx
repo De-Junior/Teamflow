@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/auth/register-form.tsx
 "use client";
 
 import { useState } from "react";
