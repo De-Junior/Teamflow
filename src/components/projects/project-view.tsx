@@ -1,7 +1,6 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import { useState, useEffect, useCallback }    from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter }                            from "next/navigation";
 import { KanbanBoardLoader }                    from "@/components/tasks/kanban-board-loader";
 import { TaskDetailModal }                      from "@/components/tasks/task-detail-modal";
@@ -52,7 +51,11 @@ export function ProjectView({
   const [filters,        setFilters]        = useState<Filters>(DEFAULT_FILTERS);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
-  useEffect(() => { setTasks(initialTasks); }, [initialTasks]);
+  const [syncedFrom, setSyncedFrom] = useState(initialTasks);
+  if (syncedFrom !== initialTasks) {
+    setSyncedFrom(initialTasks);
+    setTasks(initialTasks);
+  }
 
   // 30-second polling for team sync
   useEffect(() => {
@@ -60,7 +63,8 @@ export function ProjectView({
     return () => clearInterval(id);
   }, [router]);
 
-  const filteredTasks = tasks.filter((t) => matchesFilters(t, filters));
+  // Memoised so the board only re-syncs when the tasks or filters actually change.
+  const filteredTasks = useMemo(() => tasks.filter((t) => matchesFilters(t, filters)), [tasks, filters]);
 
   const handleTaskUpdated    = useCallback(() => { router.refresh(); }, [router]);
   const handleTaskDeleted    = useCallback((id: string) => { setTasks(p => p.filter(t => t.id !== id)); router.refresh(); }, [router]);
@@ -118,7 +122,7 @@ export function ProjectView({
       </div>
 
       {/* Analytics strip */}
-      <div className="flex gap-4 rounded-lg border border-border bg-card px-4 py-3">
+      <div className="grid grid-cols-2 gap-4 rounded-lg border border-border bg-card px-4 py-3 sm:grid-cols-5">
         <Stat label="Total tasks"    value={tasks.length}  />
         <Stat label="Completed"      value={doneCount}     />
         <Stat label="In progress"    value={tasks.filter(t=>t.status==="IN_PROGRESS").length} />
@@ -136,6 +140,7 @@ export function ProjectView({
           onTaskDeleted={handleTaskDeleted}
           onTaskMarkedDone={handleTaskDone}
           onTaskCreated={handleTaskCreated}
+          onTasksMoved={handleTaskUpdated}
         />
       )}
       {view === "list"     && <TaskListView    tasks={filteredTasks} userRole={userRole} onTaskClick={handleTaskClick} onTaskDeleted={handleTaskDeleted} />}
@@ -143,6 +148,7 @@ export function ProjectView({
 
       {/* Task detail modal */}
       <TaskDetailModal
+        key={selectedTaskId ?? "closed"}
         taskId={selectedTaskId}
         userRole={userRole}
         currentUserId={currentUserId}

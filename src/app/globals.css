@@ -115,3 +115,8 @@ body {
 * {
   border-color: var(--border);
 }
+/* The logo's wordmark is dark; in dark mode invert it and rotate the hue back
+   so the purple mark keeps its colour while the text turns light. */
+.dark .logo-adaptive {
+  filter: invert(1) hue-rotate(180deg);
+}

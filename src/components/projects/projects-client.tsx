@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/projects/projects-client.tsx (create new file)
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
@@ -98,8 +97,8 @@ export function ProjectsClient({
   function toggleSelect(id: string, checked: boolean) {
     setSelected((prev) => {
       const next = new Set(prev);
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      checked ? next.add(id) : next.delete(id);
+      if (checked) next.add(id);
+      else next.delete(id);
       return next;
     });
   }

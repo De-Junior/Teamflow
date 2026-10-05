@@ -1,8 +1,6 @@
-// PASTE LOCATION: src/components/tasks/kanban-board.tsx (overwrite entire file)
-/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent,
@@ -20,7 +18,7 @@ const COLUMNS = [
 ];
 const CAN_DRAG = ["SUPER_ADMIN","OWNER","MANAGER","DEVELOPER"];
 
-export function KanbanBoard({ projectId, initialTasks, userRole, onTaskClick, onTaskDeleted, onTaskMarkedDone, onTaskCreated }: {
+export function KanbanBoard({ projectId, initialTasks, userRole, onTaskClick, onTaskDeleted, onTaskMarkedDone, onTaskCreated, onTasksMoved }: {
   projectId:        string;
   initialTasks:     TaskCardData[];
   userRole:         string;
@@ -28,12 +26,19 @@ export function KanbanBoard({ projectId, initialTasks, userRole, onTaskClick, on
   onTaskDeleted?:   (id: string) => void;
   onTaskMarkedDone?:(id: string) => void;
   onTaskCreated?:   () => void;
+  onTasksMoved?:    () => void;
 }) {
   const canDrag = CAN_DRAG.includes(userRole);
   const [tasks,      setTasks]      = useState<TaskCardData[]>(initialTasks);
   const [activeTask, setActiveTask] = useState<TaskCardData | null>(null);
 
-  useEffect(() => { setTasks(initialTasks); }, [initialTasks]);
+  // Adopt fresh server data when the parent passes a new list (React's
+  // "adjust state when a prop changes" pattern, without an extra effect pass).
+  const [syncedFrom, setSyncedFrom] = useState(initialTasks);
+  if (syncedFrom !== initialTasks) {
+    setSyncedFrom(initialTasks);
+    setTasks(initialTasks);
+  }
 
   const sensors = useSensors(useSensor(PointerSensor, {
     activationConstraint: { distance: canDrag ? 4 : Infinity },
@@ -78,6 +83,7 @@ export function KanbanBoard({ projectId, initialTasks, userRole, onTaskClick, on
       newTasks = [...rest, ...newTgtCol, ...srcCol];
     }
 
+    const previousTasks = tasks;
     setTasks(newTasks);
 
     const tgtUpdates = newTasks.filter(t=>t.status===targetStatus).map((t,i)=>({ id:t.id, status:targetStatus, position:i }));
@@ -86,11 +92,16 @@ export function KanbanBoard({ projectId, initialTasks, userRole, onTaskClick, on
       : [];
 
     try {
-      await fetch("/api/tasks/reorder", {
+      const res = await fetch("/api/tasks/reorder", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tasks: [...tgtUpdates, ...srcUpdates] }),
       });
-    } catch { /* best-effort */ }
+      if (!res.ok) throw new Error(`Reorder failed with ${res.status}`);
+      onTasksMoved?.();
+    } catch {
+      // Roll the optimistic move back so the board never shows unsaved state.
+      setTasks(previousTasks);
+    }
   }
 
   return (

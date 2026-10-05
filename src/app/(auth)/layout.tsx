@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/(auth)/layout.tsx (overwrite entire file)
 import Image from "next/image";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -11,6 +10,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             alt="TeamFlow"
             width={1877}
             height={838}
+            className="logo-adaptive"
             style={{ width: "180px", height: "auto" }}
             priority
           />

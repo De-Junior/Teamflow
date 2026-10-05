@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/dashboard/topbar.tsx (overwrite entire file)
 "use client";
 
 import { signOut } from "next-auth/react";
@@ -30,7 +29,7 @@ export function Topbar({
     <header className="flex h-14 items-center justify-between border-b border-border bg-card px-6">
       <button
         onClick={() => setIsOpen(true)}
-        className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+        className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:invisible"
         aria-label="Open navigation"
       >
         <Menu className="size-5" />

@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/dashboard/widgets/welcome-banner.tsx (overwrite entire file)
 import Image from "next/image";
 import { SubscriptionPlan } from "@prisma/client";
 
@@ -31,7 +30,8 @@ export function WelcomeBanner({
           alt={organizationName}
           width={1877}
           height={838}
-          style={{ width: "auto", height: "32px" }}
+          className="logo-adaptive"
+            style={{ width: "auto", height: "32px" }}
           priority
         />
         <div className="h-8 w-px bg-border" />

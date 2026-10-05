@@ -1,10 +1,7 @@
-/* eslint-disable react-hooks/refs */
-/* eslint-disable react-hooks/set-state-in-effect */
-// PASTE LOCATION: src/components/tasks/task-detail-modal.tsx (create new file)
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Dialog, DialogContent }        from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button }                       from "@/components/ui/button";
 import { Input }                        from "@/components/ui/input";
 import { Textarea }                     from "@/components/ui/textarea";
@@ -78,7 +75,10 @@ export function TaskDetailModal({
 }) {
   const [tab,        setTab]        = useState<TabId>("details");
   const [task,       setTask]       = useState<FullTask | null>(null);
-  const [loading,    setLoading]    = useState(false);
+  // The parent remounts this component per task (key={taskId}), so state
+  // starts fresh for every task without effects resetting it.
+  const [loading,    setLoading]    = useState(Boolean(taskId));
+  const [loadError,  setLoadError]  = useState(false);
   const [subtasks,   setSubtasks]   = useState<SubTask[] | null>(null);
   const [checklist,  setChecklist]  = useState<ChecklistItem[] | null>(null);
   const [comments,   setComments]   = useState<Comment[] | null>(null);
@@ -86,28 +86,33 @@ export function TaskDetailModal({
   const [activity,   setActivity]   = useState<LogEntry[] | null>(null);
   const [saving,     setSaving]     = useState(false);
 
-  // Fetch core task when modal opens
-  useEffect(() => {
-    if (!taskId) { setTask(null); setTab("details"); return; }
-    setLoading(true);
-    setSubtasks(null); setChecklist(null); setComments(null);
-    setTimeEntries(null); setActivity(null);
-    fetch(`/api/tasks/${taskId}`)
-      .then(r => r.json())
-      .then(j => { if (j.success) setTask(j.data); })
-      .finally(() => setLoading(false));
-  }, [taskId]);
-
-  // Lazy-load tab data
+  // Fetch the core task when the modal opens
   useEffect(() => {
     if (!taskId) return;
-    if (tab === "subtasks"  && subtasks   === null) fetch(`/api/tasks/${taskId}/subtasks`).then(r=>r.json()).then(j=>j.success&&setSubtasks(j.data));
-    if (tab === "checklist" && checklist  === null) fetch(`/api/tasks/${taskId}/checklist`).then(r=>r.json()).then(j=>j.success&&setChecklist(j.data));
-    if (tab === "comments"  && comments   === null) fetch(`/api/tasks/${taskId}/comments`).then(r=>r.json()).then(j=>j.success&&setComments(j.data));
-    if (tab === "time"      && timeEntries=== null) fetch(`/api/tasks/${taskId}/time`).then(r=>r.json()).then(j=>j.success&&setTimeEntries(j.data));
-    if (tab === "activity"  && activity   === null) fetch(`/api/tasks/${taskId}/activity`).then(r=>r.json()).then(j=>j.success&&setActivity(j.data));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, taskId]);
+    let cancelled = false;
+    fetch(`/api/tasks/${taskId}`)
+      .then(r => r.json())
+      .then(j => {
+        if (cancelled) return;
+        if (j.success) setTask(j.data);
+        else setLoadError(true);
+      })
+      .catch(() => { if (!cancelled) setLoadError(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [taskId]);
+
+  // Lazy-load each tab's data the first time it's opened
+  useEffect(() => {
+    if (!taskId) return;
+    const load = <T,>(path: string, set: (v: T) => void) =>
+      fetch(`/api/tasks/${taskId}/${path}`).then(r => r.json()).then(j => { if (j.success) set(j.data); });
+    if (tab === "subtasks"  && subtasks    === null) void load("subtasks",  setSubtasks);
+    if (tab === "checklist" && checklist   === null) void load("checklist", setChecklist);
+    if (tab === "comments"  && comments    === null) void load("comments",  setComments);
+    if (tab === "time"      && timeEntries === null) void load("time",      setTimeEntries);
+    if (tab === "activity"  && activity    === null) void load("activity",  setActivity);
+  }, [tab, taskId, subtasks, checklist, comments, timeEntries, activity]);
 
   async function patch(data: Record<string, unknown>) {
     if (!taskId) return;
@@ -129,8 +134,15 @@ export function TaskDetailModal({
 
   return (
     <Dialog open={!!taskId} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="flex max-h-[90vh] w-full max-w-4xl flex-col gap-0 overflow-hidden p-0">
-        {loading || !task ? (
+      <DialogContent hideClose className="flex max-h-[90vh] w-full max-w-4xl flex-col gap-0 overflow-hidden p-0">
+        {/* The visible title is an inline editor, so screen readers get this one */}
+        <DialogTitle className="sr-only">{task?.title ?? "Task details"}</DialogTitle>
+        {loadError ? (
+          <div className="flex flex-col items-center justify-center gap-3 p-16 text-center">
+            <p className="text-sm text-muted-foreground">This task couldn&apos;t be loaded. It may have been deleted.</p>
+            <Button size="sm" variant="outline" onClick={onClose}>Close</Button>
+          </div>
+        ) : loading || !task ? (
           <div className="flex items-center justify-center p-16">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
           </div>
@@ -143,7 +155,7 @@ export function TaskDetailModal({
                 value={task.title}
                 onBlur={(v) => { updateLocalTask({ title: v }); void patch({ title: v }); }}
               />
-              <button onClick={onClose} className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted">
+              <button onClick={onClose} className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted" aria-label="Close task">
                 <X className="size-4" />
               </button>
             </div>
@@ -187,7 +199,8 @@ export function TaskDetailModal({
 // ─── Title input ───────────────────────────────────────────────────────────
 function TitleInput({ value, onBlur }: { value: string; onBlur: (v: string) => void }) {
   const [v, setV] = useState(value);
-  useEffect(() => { setV(value); }, [value]);
+  const [syncedFrom, setSyncedFrom] = useState(value);
+  if (syncedFrom !== value) { setSyncedFrom(value); setV(value); }
   return (
     <input
       className="flex-1 bg-transparent text-base font-semibold text-foreground outline-none placeholder:text-muted-foreground"
@@ -215,7 +228,11 @@ function DetailsTab({ task, members, updateLocal, patch, userRole }: {
   // mirrors the "task:assign" permission in src/lib/auth/permissions.ts
   const canAssign = hasPermission(userRole as Role, "task:assign");
 
-  useEffect(() => { setDesc(task.description ?? ""); }, [task.description]);
+  const [descSyncedFrom, setDescSyncedFrom] = useState(task.description);
+  if (descSyncedFrom !== task.description) {
+    setDescSyncedFrom(task.description);
+    setDesc(task.description ?? "");
+  }
 
   async function addLabel() {
     if (!newLabel.trim()) return;
@@ -290,7 +307,7 @@ function DetailsTab({ task, members, updateLocal, patch, userRole }: {
                   />
                 ))}
               </div>
-              <Button size="sm" className="h-7 text-xs" onClick={void addLabel}>Add</Button>
+              <Button size="sm" className="h-7 text-xs" onClick={() => void addLabel()}>Add</Button>
             </div>
           )}
         </div>
@@ -437,7 +454,7 @@ function SubtasksTab({ taskId, items, setItems, userRole }: {
             onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") void add(); }}
           />
-          <Button size="sm" className="h-8" onClick={void add} disabled={!newTitle.trim()}>Add</Button>
+          <Button size="sm" className="h-8" onClick={() => void add()} disabled={!newTitle.trim()}>Add</Button>
         </div>
       )}
     </div>
@@ -517,7 +534,7 @@ function ChecklistTab({ taskId, items, setItems, userRole }: {
             onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") void add(); }}
           />
-          <Button size="sm" className="h-8" onClick={void add} disabled={!newTitle.trim()}>Add</Button>
+          <Button size="sm" className="h-8" onClick={() => void add()} disabled={!newTitle.trim()}>Add</Button>
         </div>
       )}
     </div>
@@ -598,7 +615,7 @@ function CommentsTab({ taskId, items, setItems, currentUserId, userRole }: {
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send(); }}
           />
-          <Button size="sm" disabled={!draft.trim() || sending} onClick={void send} className="self-end">
+          <Button size="sm" disabled={!draft.trim() || sending} onClick={() => void send()} className="self-end">
             <Send className="size-3.5" />
           </Button>
         </div>
@@ -653,7 +670,7 @@ function TimeTab({ taskId, items, setItems, currentUserId, userRole }: {
           value={mins} onChange={(e) => setMins(e.target.value)} />
         <Input className="h-8 flex-1 text-sm" placeholder="Note (optional)"
           value={note} onChange={(e) => setNote(e.target.value)} />
-        <Button size="sm" className="h-8" disabled={!mins || saving} onClick={void log}>Log</Button>
+        <Button size="sm" className="h-8" disabled={!mins || saving} onClick={() => void log()}>Log</Button>
       </div>
 
       <div className="flex flex-col gap-2">

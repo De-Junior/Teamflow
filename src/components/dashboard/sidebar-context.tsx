@@ -1,8 +1,6 @@
-/* eslint-disable react-hooks/set-state-in-effect */
-// src/components/dashboard/sidebar-context.tsx (new file)
 "use client";
 
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useCallback, useContext, useState } from "react";
 import { usePathname } from "next/navigation";
 
 const SidebarContext = createContext<{
@@ -11,12 +9,12 @@ const SidebarContext = createContext<{
 } | null>(null);
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
-  const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
-
-  useEffect(() => {
-    setIsOpen(false);
-  }, [pathname]);
+  // Remember which route the mobile sidebar was opened on; navigating anywhere
+  // else closes it without needing an effect to reset state.
+  const [openOn, setOpenOn] = useState<string | null>(null);
+  const isOpen = openOn === pathname;
+  const setIsOpen = useCallback((open: boolean) => setOpenOn(open ? pathname : null), [pathname]);
 
   return (
     <SidebarContext.Provider value={{ isOpen, setIsOpen }}>

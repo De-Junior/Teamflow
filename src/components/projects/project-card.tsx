@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/projects/project-card.tsx (overwrite entire file)
 "use client";
 
 import { useState } from "react";
@@ -149,17 +148,18 @@ export function ProjectCard({
       )}
     >
       <CardContent className="flex flex-1 flex-col p-4">
-        {/* Top row: checkbox + menu */}
-        <div className="mb-3 flex items-center justify-between">
-          <div onClick={(e) => e.stopPropagation()}>
+        {/* Selection + actions float in the corner so they don't reserve space */}
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-1">
+          <div onClick={(e) => e.stopPropagation()} className="flex">
             <input
               type="checkbox"
               checked={isSelected}
               onChange={(e) => onSelect(e.target.checked)}
               className={cn(
                 "size-4 accent-primary cursor-pointer transition-opacity",
-                isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                isSelected ? "opacity-100" : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
               )}
+              aria-label={`Select ${project.name}`}
             />
           </div>
 
@@ -170,8 +170,8 @@ export function ProjectCard({
                   <button className={cn(
                     "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground",
                     "transition-opacity hover:bg-muted hover:text-foreground",
-                    "opacity-0 group-hover:opacity-100"
-                  )}>
+                    "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                  )} aria-label="Project actions">
                     <MoreHorizontal className="size-4" />
                   </button>
                 </DropdownMenu.Trigger>
@@ -234,7 +234,7 @@ export function ProjectCard({
         {/* Clickable body */}
         <div className="flex flex-1 flex-col" onClick={() => router.push(`/projects/${project.id}`)}>
           {/* Priority dot + name */}
-          <div className="mb-1.5 flex items-start gap-2">
+          <div className="mb-1.5 flex items-start gap-2 pr-16">
             <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", PRIORITY_DOT[project.priority])} />
             <h3 className="text-sm font-semibold leading-snug text-foreground">{project.name}</h3>
           </div>

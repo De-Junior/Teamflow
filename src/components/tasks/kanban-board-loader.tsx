@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/components/tasks/kanban-board-loader.tsx (overwrite entire file)
 "use client";
 
 import dynamic          from "next/dynamic";
@@ -21,7 +20,7 @@ const KanbanBoard = dynamic(
   }
 );
 
-export function KanbanBoardLoader({ projectId, initialTasks, userRole, onTaskClick, onTaskDeleted, onTaskMarkedDone, onTaskCreated }: {
+export function KanbanBoardLoader({ projectId, initialTasks, userRole, onTaskClick, onTaskDeleted, onTaskMarkedDone, onTaskCreated, onTasksMoved }: {
   projectId:       string;
   initialTasks:    TaskCardData[];
   userRole:        string;
@@ -29,12 +28,14 @@ export function KanbanBoardLoader({ projectId, initialTasks, userRole, onTaskCli
   onTaskDeleted?:  (id: string) => void;
   onTaskMarkedDone?:(id: string) => void;
   onTaskCreated?:  () => void;
+  onTasksMoved?:   () => void;
 }) {
   return (
     <KanbanBoard
       projectId={projectId} initialTasks={initialTasks} userRole={userRole}
       onTaskClick={onTaskClick} onTaskDeleted={onTaskDeleted}
       onTaskMarkedDone={onTaskMarkedDone} onTaskCreated={onTaskCreated}
+      onTasksMoved={onTasksMoved}
     />
   );
 }

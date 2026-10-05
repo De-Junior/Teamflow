@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/immutability */
 "use client";
 
 import { useState } from "react";
@@ -71,7 +70,7 @@ export function BillingClient({ billing }: { billing: BillingData }) {
       });
       const json = await res.json();
       if (json.success && json.data?.url) {
-        window.location.href = json.data.url;
+        window.location.assign(json.data.url);
       } else {
         alert(json.message ?? "Something went wrong.");
       }
@@ -88,7 +87,7 @@ export function BillingClient({ billing }: { billing: BillingData }) {
       const res = await fetch("/api/billing/portal", { method: "POST" });
       const json = await res.json();
       if (json.success && json.data?.url) {
-        window.location.href = json.data.url;
+        window.location.assign(json.data.url);
       } else {
         alert(json.message ?? "Something went wrong.");
       }
