@@ -1,13 +1,50 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { taskRepository, writeAuditLog, createNotification } from "@/lib/db/tenant";
-import { requirePermission, UnauthorizedError } from "@/lib/auth/permissions";
+import { taskRepository, writeAuditLog, createNotification, getUserMembership } from "@/lib/db/tenant";
+import { hasPermission, requirePermission, UnauthorizedError } from "@/lib/auth/permissions";
 import { updateTaskSchema } from "@/validations/project";
 import { Role } from "@prisma/client";
-import { prisma } from "@/lib/db/prisma"; // adjust path if your Prisma client is exported elsewhere
+import { prisma } from "@/lib/db/prisma";
 import { sendTaskAssignedEmail } from "@/lib/email/send";
 
 type RouteParams = { params: Promise<{ id: string }> };
+
+export async function GET(_req: Request, { params }: RouteParams) {
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const ctx = {
+    tenantId: session.user.tenantId,
+    organizationId: session.user.organizationId,
+    userId: session.user.id,
+  };
+
+  const task = await taskRepository(ctx).findById(id, {
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      status: true,
+      priority: true,
+      dueDate: true,
+      projectId: true,
+      createdAt: true,
+      updatedAt: true,
+      assignee: { select: { id: true, name: true, image: true } },
+      creator: { select: { id: true, name: true } },
+      labels: { select: { id: true, name: true, color: true } },
+    },
+  });
+
+  if (!task) {
+    return NextResponse.json({ success: false, message: "Task not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({ success: true, data: task });
+}
 
 export async function PATCH(req: Request, { params }: RouteParams) {
   const session = await auth();
@@ -50,7 +87,7 @@ export async function PATCH(req: Request, { params }: RouteParams) {
       select: {
         title: true,
         assigneeId: true,
-        project: { select: { name: true } },
+        project: { select: { id: true, name: true } },
       },
     });
 
@@ -58,12 +95,27 @@ export async function PATCH(req: Request, { params }: RouteParams) {
       return NextResponse.json({ success: false, message: "Task not found" }, { status: 404 });
     }
 
+    const isReassigning = assigneeId !== undefined && (assigneeId || null) !== existingTask.assigneeId;
+    if (isReassigning && !hasPermission(session.user.role as Role, "task:assign")) {
+      return NextResponse.json(
+        { success: false, message: 'Insufficient permissions: requires "task:assign"' },
+        { status: 403 }
+      );
+    }
+
+    if (assigneeId && !(await getUserMembership(assigneeId, ctx.organizationId))) {
+      return NextResponse.json(
+        { success: false, message: "Assignee must be a member of this organization" },
+        { status: 400 }
+      );
+    }
+
+    // updateMany only accepts scalar fields, so the assignee is set through
+    // its foreign key rather than a relation connect.
     const result = await taskRepository(ctx).update(id, {
       ...rest,
       ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
-      ...(assigneeId !== undefined && {
-        assignee: assigneeId ? { connect: { id: assigneeId } } : { disconnect: true },
-      }),
+      ...(assigneeId !== undefined && { assigneeId: assigneeId || null }),
     });
 
     if (result.count === 0) {
@@ -105,7 +157,7 @@ export async function PATCH(req: Request, { params }: RouteParams) {
           assignerName: session.user.name ?? "A teammate",
           taskTitle: existingTask.title,
           projectName: existingTask.project.name,
-          taskUrl: `${process.env.NEXT_PUBLIC_APP_URL}/projects/${existingTask.project.name}`,
+          taskUrl: `${process.env.NEXT_PUBLIC_APP_URL}/projects/${existingTask.project.id}`,
         });
       }
     }

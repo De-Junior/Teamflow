@@ -1,6 +1,6 @@
-// PASTE LOCATION: src/app/api/invitations/resend/route.ts (overwrite entire file)
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { blockOnDemo } from "@/lib/api/demo-guard";
 import { prisma } from "@/lib/db/prisma";
 import { createNotification } from "@/lib/db/tenant";
 import { requirePermission, UnauthorizedError } from "@/lib/auth/permissions";
@@ -12,6 +12,9 @@ export async function POST(req: Request) {
   if (!session?.user) {
     return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
   }
+
+  const demoBlock = blockOnDemo(session);
+  if (demoBlock) return demoBlock;
 
   try {
     requirePermission(session.user.role as Role, "members:invite");

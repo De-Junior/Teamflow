@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { taskRepository, projectRepository, writeAuditLog, createNotification } from "@/lib/db/tenant";
+import {
+  taskRepository,
+  projectRepository,
+  writeAuditLog,
+  createNotification,
+  getUserMembership,
+} from "@/lib/db/tenant";
 import { requirePermission, UnauthorizedError } from "@/lib/auth/permissions";
 import { createTaskSchema } from "@/validations/project";
 import { Role } from "@prisma/client";
@@ -47,6 +53,13 @@ export async function POST(req: Request) {
 
     if (!project) {
       return NextResponse.json({ success: false, message: "Project not found" }, { status: 404 });
+    }
+
+    if (assigneeId && !(await getUserMembership(assigneeId, ctx.organizationId))) {
+      return NextResponse.json(
+        { success: false, message: "Assignee must be a member of this organization" },
+        { status: 400 }
+      );
     }
 
     const task = await taskRepository(ctx).create({

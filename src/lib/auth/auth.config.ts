@@ -7,6 +7,8 @@ import { loginSchema } from "@/validations/auth";
 
 export const authConfig: NextAuthConfig = {
   trustHost: true,
+  // AUTH_SECRET is the Auth.js v5 name; NEXTAUTH_SECRET keeps v4-style env files working.
+  secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
 
   providers: [
     Google({
@@ -37,7 +39,9 @@ export const authConfig: NextAuthConfig = {
           id: user.id,
           name: user.name,
           email: user.email,
-          image: user.image,
+          // Uploaded avatars are stored as data URLs; keep them out of the
+          // JWT cookie; pages read the avatar from the database instead.
+          image: user.image?.startsWith("data:") ? null : user.image,
         };
       },
     }),

@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { projectMemberRepository, requireMembership, writeAuditLog } from "@/lib/db/tenant";
+import {
+  projectMemberRepository,
+  projectRepository,
+  requireMembership,
+  writeAuditLog,
+} from "@/lib/db/tenant";
 import { requirePermission, UnauthorizedError } from "@/lib/auth/permissions";
 import { Role } from "@prisma/client";
 
@@ -47,10 +52,14 @@ export async function POST(req: Request, { params }: RouteParams) {
     userId: session.user.id,
   };
 
-  const body = await req.json();
-  const parsed = bodySchema.safeParse(body);
+  const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ success: false, message: "Invalid input" }, { status: 400 });
+  }
+
+  const project = await projectRepository(ctx).findById(id, { select: { id: true } });
+  if (!project) {
+    return NextResponse.json({ success: false, message: "Project not found" }, { status: 404 });
   }
 
   try {

@@ -1,6 +1,6 @@
-// PASTE LOCATION: src/app/api/users/route.ts (overwrite entire file)
 import { NextResponse } from "next/server";
 import { auth }         from "@/lib/auth";
+import { blockOnDemo }  from "@/lib/api/demo-guard";
 import { prisma }       from "@/lib/db/prisma";
 import bcrypt           from "bcryptjs";
 import { z }            from "zod";
@@ -33,6 +33,9 @@ export async function PATCH(req: Request) {
 
     // Password change branch
     if (currentPassword !== undefined || newPassword !== undefined) {
+      const demoBlock = blockOnDemo(session);
+      if (demoBlock) return demoBlock;
+
       if (!currentPassword || !newPassword) {
         return NextResponse.json({ success: false, message: "Both current and new password are required." }, { status: 400 });
       }

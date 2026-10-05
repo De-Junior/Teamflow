@@ -1,6 +1,6 @@
-// PASTE LOCATION: src/app/api/users/connected-accounts/[provider]/route.ts (create folder "[provider]" + file)
 import { NextResponse } from "next/server";
 import { auth }         from "@/lib/auth";
+import { blockOnDemo } from "@/lib/api/demo-guard";
 import { prisma }       from "@/lib/db/prisma";
 
 type P = { params: Promise<{ provider: string }> };
@@ -8,6 +8,9 @@ type P = { params: Promise<{ provider: string }> };
 export async function DELETE(_req: Request, { params }: P) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+
+  const demoBlock = blockOnDemo(session);
+  if (demoBlock) return demoBlock;
   const { provider } = await params;
 
   const [accountCount, user] = await Promise.all([

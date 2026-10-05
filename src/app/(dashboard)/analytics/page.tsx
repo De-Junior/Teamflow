@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/app/(dashboard)/analytics/page.tsx
 import { auth } from "@/lib/auth";
 import { resolveDateRange, type RangeKey } from "@/lib/analytics/date-range";
 import { getAnalyticsData } from "@/lib/analytics/get-analytics-data";
@@ -10,6 +9,8 @@ import { TeamPerformance } from "@/components/analytics/team-performance";
 import { ProjectComparison } from "@/components/analytics/project-comparison";
 import { ExportButton } from "@/components/analytics/export-button";
 import { AIInsightsPanel } from "@/components/analytics/ai-insights-panel";
+import { hasPermission } from "@/lib/auth/permissions";
+import type { Role } from "@prisma/client";
 
 export default async function AnalyticsPage({
   searchParams,
@@ -19,6 +20,7 @@ export default async function AnalyticsPage({
   const params = await searchParams;
   const session = await auth();
   const tenantId = session!.user.tenantId;
+  const canUseAI = hasPermission(session!.user.role as Role, "analytics:view");
 
   const rangeKey = (params.range as RangeKey) ?? "7d";
   const { from, to, label } = resolveDateRange(rangeKey, params.from, params.to);
@@ -83,7 +85,7 @@ export default async function AnalyticsPage({
           <TeamPerformance data={data.teamPerformance} />
 
           <ProjectComparison projects={data.projectComparison} />
-          <AIInsightsPanel range={rangeKey} />
+          {canUseAI && <AIInsightsPanel range={rangeKey} />}
         </>
       )}
     </div>

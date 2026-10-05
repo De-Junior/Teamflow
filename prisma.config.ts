@@ -3,7 +3,8 @@ import { defineConfig, env } from "prisma/config";
 
 function withConnectTimeout(url: string | undefined) {
   if (!url) return url;
-  return url.includes("connect_timeout") ? url : `${url}&connect_timeout=30`;
+  if (url.includes("connect_timeout")) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}connect_timeout=30`;
 }
 
 export default defineConfig({

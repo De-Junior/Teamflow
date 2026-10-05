@@ -1,26 +1,32 @@
-// PASTE LOCATION: src/app/api/tasks/[id]/checklist/[itemId]/route.ts (create folder + file)
 import { NextResponse } from "next/server";
-import { auth }         from "@/lib/auth";
-import { prisma }       from "@/lib/db/prisma";
+import { prisma } from "@/lib/db/prisma";
+import { jsonError, readJson, requireTaskAccess } from "@/lib/api/task-access";
+import { firstIssue, updateChecklistItemSchema } from "@/validations/task-items";
 
-type P = { params: Promise<{ itemId: string }> };
+type P = { params: Promise<{ id: string; itemId: string }> };
 
 export async function PATCH(req: Request, { params }: P) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  const { itemId } = await params;
-  const body = await req.json();
-  await prisma.checklistItem.update({
-    where: { id: itemId },
-    data:  { ...(body.checked !== undefined && { checked: body.checked }), ...(body.title && { title: body.title }) },
+  const { id, itemId } = await params;
+  const access = await requireTaskAccess(id, "task:update");
+  if (!access.ok) return access.response;
+
+  const parsed = updateChecklistItemSchema.safeParse(await readJson(req));
+  if (!parsed.success) return jsonError(firstIssue(parsed.error), 400);
+
+  const updated = await prisma.checklistItem.updateMany({
+    where: { id: itemId, taskId: access.taskId },
+    data: parsed.data,
   });
+  if (updated.count === 0) return jsonError("Checklist item not found.", 404);
   return NextResponse.json({ success: true });
 }
 
 export async function DELETE(_req: Request, { params }: P) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  const { itemId } = await params;
-  await prisma.checklistItem.delete({ where: { id: itemId } });
+  const { id, itemId } = await params;
+  const access = await requireTaskAccess(id, "task:update");
+  if (!access.ok) return access.response;
+
+  const deleted = await prisma.checklistItem.deleteMany({ where: { id: itemId, taskId: access.taskId } });
+  if (deleted.count === 0) return jsonError("Checklist item not found.", 404);
   return NextResponse.json({ success: true });
 }

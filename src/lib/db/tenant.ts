@@ -49,7 +49,7 @@ export function projectRepository(ctx: TenantContext) {
         },
       }),
 
-    update: (id: string, data: Prisma.ProjectUpdateInput) =>
+    update: (id: string, data: Prisma.ProjectUpdateManyMutationInput) =>
       prisma.project.updateMany({
         where: { id, tenantId: ctx.tenantId },
         data,
@@ -114,7 +114,7 @@ export function taskRepository(ctx: TenantContext) {
         },
       }),
 
-    update: (id: string, data: Prisma.TaskUpdateInput) =>
+    update: (id: string, data: Prisma.TaskUncheckedUpdateManyInput) =>
       prisma.task.updateMany({
         where: { id, tenantId: ctx.tenantId },
         data,

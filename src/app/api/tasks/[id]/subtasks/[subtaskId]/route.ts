@@ -1,28 +1,32 @@
-// PASTE LOCATION: src/app/api/tasks/[id]/subtasks/[subtaskId]/route.ts (create folder + file)
 import { NextResponse } from "next/server";
-import { auth }         from "@/lib/auth";
-import { prisma }       from "@/lib/db/prisma";
+import { prisma } from "@/lib/db/prisma";
+import { jsonError, readJson, requireTaskAccess } from "@/lib/api/task-access";
+import { firstIssue, updateSubtaskSchema } from "@/validations/task-items";
 
-type P = { params: Promise<{ subtaskId: string }> };
+type P = { params: Promise<{ id: string; subtaskId: string }> };
 
 export async function PATCH(req: Request, { params }: P) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  const { subtaskId } = await params;
-  const body = await req.json();
+  const { id, subtaskId } = await params;
+  const access = await requireTaskAccess(id, "task:update");
+  if (!access.ok) return access.response;
+
+  const parsed = updateSubtaskSchema.safeParse(await readJson(req));
+  if (!parsed.success) return jsonError(firstIssue(parsed.error), 400);
 
   const updated = await prisma.subTask.updateMany({
-    where: { id: subtaskId },
-    data:  { ...(body.completed !== undefined && { completed: body.completed }), ...(body.title && { title: body.title }) },
+    where: { id: subtaskId, taskId: access.taskId },
+    data: parsed.data,
   });
-  if (updated.count === 0) return NextResponse.json({ success: false, message: "Not found." }, { status: 404 });
+  if (updated.count === 0) return jsonError("Subtask not found.", 404);
   return NextResponse.json({ success: true });
 }
 
 export async function DELETE(_req: Request, { params }: P) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  const { subtaskId } = await params;
-  await prisma.subTask.delete({ where: { id: subtaskId } });
+  const { id, subtaskId } = await params;
+  const access = await requireTaskAccess(id, "task:update");
+  if (!access.ok) return access.response;
+
+  const deleted = await prisma.subTask.deleteMany({ where: { id: subtaskId, taskId: access.taskId } });
+  if (deleted.count === 0) return jsonError("Subtask not found.", 404);
   return NextResponse.json({ success: true });
 }

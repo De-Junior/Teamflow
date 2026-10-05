@@ -1,17 +1,16 @@
-// PASTE LOCATION: src/app/api/tasks/[id]/comments/route.ts (create folder + file)
 import { NextResponse } from "next/server";
-import { auth }         from "@/lib/auth";
-import { prisma }       from "@/lib/db/prisma";
+import { prisma } from "@/lib/db/prisma";
+import { jsonError, readJson, requireTaskAccess } from "@/lib/api/task-access";
+import { createCommentSchema, firstIssue } from "@/validations/task-items";
 
 type P = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: P) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  const { id: taskId } = await params;
+  const access = await requireTaskAccess((await params).id);
+  if (!access.ok) return access.response;
 
   const comments = await prisma.comment.findMany({
-    where:   { taskId, tenantId: session.user.tenantId },
+    where: { taskId: access.taskId, tenantId: access.tenantId },
     orderBy: { createdAt: "asc" },
     include: { author: { select: { id: true, name: true, image: true } } },
   });
@@ -19,18 +18,19 @@ export async function GET(_req: Request, { params }: P) {
 }
 
 export async function POST(req: Request, { params }: P) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  const { id: taskId } = await params;
+  const access = await requireTaskAccess((await params).id, "comment:create");
+  if (!access.ok) return access.response;
 
-  const { content } = await req.json();
-  if (!content?.trim()) return NextResponse.json({ success: false, message: "Content is required." }, { status: 400 });
-
-  const task = await prisma.task.findFirst({ where: { id: taskId, tenantId: session.user.tenantId } });
-  if (!task) return NextResponse.json({ success: false, message: "Task not found." }, { status: 404 });
+  const parsed = createCommentSchema.safeParse(await readJson(req));
+  if (!parsed.success) return jsonError(firstIssue(parsed.error), 400);
 
   const comment = await prisma.comment.create({
-    data: { tenantId: session.user.tenantId, taskId, authorId: session.user.id, content: content.trim() },
+    data: {
+      tenantId: access.tenantId,
+      taskId: access.taskId,
+      authorId: access.session.user.id,
+      content: parsed.data.content,
+    },
     include: { author: { select: { id: true, name: true, image: true } } },
   });
   return NextResponse.json({ success: true, data: comment }, { status: 201 });

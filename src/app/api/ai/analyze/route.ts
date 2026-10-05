@@ -1,6 +1,7 @@
-// PASTE LOCATION: src/app/api/ai/analyze/route.ts (new file)
 import { NextRequest, NextResponse } from "next/server";
+import { Role } from "@prisma/client";
 import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/auth/permissions";
 import { getAnalyticsData } from "@/lib/analytics/get-analytics-data";
 import { resolveDateRange, type RangeKey } from "@/lib/analytics/date-range";
 import { runAIAnalysis, type AIFeature } from "@/lib/ai/analyze";
@@ -13,9 +14,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
   }
 
-  const { feature, range } = (await req.json()) as { feature: AIFeature; range?: string };
+  // AI calls are billed per request, so they're limited to roles that can see analytics.
+  if (!hasPermission(session.user.role as Role, "analytics:view")) {
+    return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
+  }
 
-  if (!VALID_FEATURES.includes(feature)) {
+  const body = (await req.json().catch(() => null)) as { feature?: AIFeature; range?: string } | null;
+  const feature = body?.feature;
+  const range = body?.range;
+
+  if (!feature || !VALID_FEATURES.includes(feature)) {
     return NextResponse.json({ success: false, message: "Unknown feature" }, { status: 400 });
   }
 
