@@ -1,4 +1,3 @@
-// PASTE LOCATION: src/proxy.ts (overwrite entire file)
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
@@ -16,6 +15,7 @@ const PUBLIC_ROUTES = [
   "/api/reset-password",
   "/api/verify-email",
   "/api/webhooks",
+  "/api/cron",
   "/",
 ];
 

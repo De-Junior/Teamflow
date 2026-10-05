@@ -1,8 +1,9 @@
-// PASTE LOCATION: src/app/page.tsx (overwrite the entire existing file — delete everything in it first)
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { LandingPage } from "@/components/marketing/landing-page";
 
 export default async function Home() {
   const session = await auth();
-  redirect(session?.user ? "/dashboard" : "/login");
+  if (session?.user?.organizationId) redirect("/dashboard");
+  return <LandingPage />;
 }
