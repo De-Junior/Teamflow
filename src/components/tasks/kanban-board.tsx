@@ -2,10 +2,14 @@
 
 import { useState } from "react";
 import {
-  DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
+  DndContext, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent,
 } from "@dnd-kit/core";
-import { arrayMove }       from "@dnd-kit/sortable";
+import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { toast }           from "sonner";
+import type { Role }       from "@prisma/client";
+import { api, errorMessage } from "@/lib/api-client";
+import { hasPermission }   from "@/lib/auth/permissions";
 import { KanbanColumn }    from "@/components/tasks/kanban-column";
 import { TaskCard, type TaskCardData } from "@/components/tasks/task-card";
 
@@ -16,7 +20,6 @@ const COLUMNS = [
   { status: "REVIEW",      label: "Review"      },
   { status: "DONE",        label: "Done"        },
 ];
-const CAN_DRAG = ["SUPER_ADMIN","OWNER","MANAGER","DEVELOPER"];
 
 export function KanbanBoard({ projectId, initialTasks, userRole, onTaskClick, onTaskDeleted, onTaskMarkedDone, onTaskCreated, onTasksMoved }: {
   projectId:        string;
@@ -28,7 +31,7 @@ export function KanbanBoard({ projectId, initialTasks, userRole, onTaskClick, on
   onTaskCreated?:   () => void;
   onTasksMoved?:    () => void;
 }) {
-  const canDrag = CAN_DRAG.includes(userRole);
+  const canDrag = hasPermission(userRole as Role, "task:update");
   const [tasks,      setTasks]      = useState<TaskCardData[]>(initialTasks);
   const [activeTask, setActiveTask] = useState<TaskCardData | null>(null);
 
@@ -40,9 +43,12 @@ export function KanbanBoard({ projectId, initialTasks, userRole, onTaskClick, on
     setTasks(initialTasks);
   }
 
-  const sensors = useSensors(useSensor(PointerSensor, {
-    activationConstraint: { distance: canDrag ? 4 : Infinity },
-  }));
+  // Pointer drags start after a few pixels so a tap still opens the card;
+  // the keyboard sensor makes the board usable without a mouse.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   function handleDragStart(e: DragStartEvent) {
     if (!canDrag) return;
@@ -92,25 +98,22 @@ export function KanbanBoard({ projectId, initialTasks, userRole, onTaskClick, on
       : [];
 
     try {
-      const res = await fetch("/api/tasks/reorder", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tasks: [...tgtUpdates, ...srcUpdates] }),
-      });
-      if (!res.ok) throw new Error(`Reorder failed with ${res.status}`);
+      await api.post("/api/tasks/reorder", { tasks: [...tgtUpdates, ...srcUpdates] });
       onTasksMoved?.();
-    } catch {
+    } catch (err) {
       // Roll the optimistic move back so the board never shows unsaved state.
       setTasks(previousTasks);
+      toast.error(errorMessage(err));
     }
   }
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      <div className="flex snap-x gap-4 overflow-x-auto pb-4">
         {COLUMNS.map(({ status, label }) => (
           <KanbanColumn
             key={status} status={status} label={label}
-            projectId={projectId} userRole={userRole}
+            projectId={projectId} userRole={userRole} canDrag={canDrag}
             tasks={tasks.filter(t => t.status === status)}
             onTaskCreated={onTaskCreated ?? (() => {})}
             onTaskDeleted={onTaskDeleted ?? (() => {})}

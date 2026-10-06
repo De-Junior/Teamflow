@@ -7,6 +7,9 @@ import { cn }           from "@/lib/utils";
 import { MoreHorizontal, RefreshCw, X } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { InvitationData } from "@/components/team/team-client";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { api, errorMessage } from "@/lib/api-client";
 
 const ROLE_LABEL: Record<string, string> = {
   OWNER: "Owner", MANAGER: "Manager", DEVELOPER: "Developer", VIEWER: "Viewer",
@@ -18,39 +21,34 @@ export function InvitationRow({ invitation, canManage }: {
 }) {
   const router    = useRouter();
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState<string | null>(null);
-  const [resent,  setResent]  = useState(false);
+  const confirm   = useConfirm();
 
   const isExpired = new Date(invitation.expiresAt) < new Date();
 
   async function resend() {
-    setLoading(true); setError(null);
+    setLoading(true);
     try {
-      const res  = await fetch("/api/invitations/resend", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invitationId: invitation.id }),
-      });
-      const json = await res.json();
-      if (!json.success) { setError(json.message); return; }
-      setResent(true);
-      setTimeout(() => setResent(false), 3000);
+      await api.post("/api/invitations/resend", { invitationId: invitation.id });
+      toast.success(`Invitation resent to ${invitation.email}.`);
       router.refresh();
-    } catch { setError("Something went wrong."); }
+    } catch (err) { toast.error(errorMessage(err)); }
     finally  { setLoading(false); }
   }
 
   async function revoke() {
-    if (!confirm(`Revoke invitation for ${invitation.email}?`)) return;
-    setLoading(true); setError(null);
+    const ok = await confirm({
+      title: `Revoke the invitation for ${invitation.email}?`,
+      description: "The link in their email will stop working. You can invite them again later.",
+      confirmLabel: "Revoke",
+      destructive: true,
+    });
+    if (!ok) return;
+    setLoading(true);
     try {
-      const res  = await fetch("/api/invitations/revoke", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invitationId: invitation.id }),
-      });
-      const json = await res.json();
-      if (!json.success) { setError(json.message); return; }
+      await api.post("/api/invitations/revoke", { invitationId: invitation.id });
+      toast.success("Invitation revoked.");
       router.refresh();
-    } catch { setError("Something went wrong."); }
+    } catch (err) { toast.error(errorMessage(err)); }
     finally  { setLoading(false); }
   }
 
@@ -72,24 +70,22 @@ export function InvitationRow({ invitation, canManage }: {
 
         {/* Sent */}
         <span className="text-xs text-muted-foreground">
-          {new Date(invitation.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+          {new Date(invitation.createdAt).toLocaleDateString("en-GB", { month: "short", day: "numeric" })}
         </span>
 
         {/* Expires */}
         <span className={cn("text-xs", isExpired ? "text-destructive" : "text-muted-foreground")}>
           {isExpired
             ? "Expired"
-            : new Date(invitation.expiresAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+            : new Date(invitation.expiresAt).toLocaleDateString("en-GB", { month: "short", day: "numeric" })}
         </span>
 
         {/* Actions */}
         <div className="flex w-16 items-center justify-end">
-          {resent ? (
-            <span className="text-xs font-medium text-green-600">Sent!</span>
-          ) : canManage ? (
+          {canManage ? (
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8" disabled={loading}>
+                <Button variant="ghost" size="icon" className="h-8 w-8" disabled={loading} aria-label={`Actions for ${invitation.email}`}>
                   <MoreHorizontal className="size-4" />
                 </Button>
               </DropdownMenu.Trigger>
@@ -115,7 +111,6 @@ export function InvitationRow({ invitation, canManage }: {
           ) : null}
         </div>
       </div>
-      {error && <p className="pb-1 text-xs text-destructive">{error}</p>}
     </div>
   );
 }

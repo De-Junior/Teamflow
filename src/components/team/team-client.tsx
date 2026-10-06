@@ -188,7 +188,7 @@ export function TeamClient({
                     <span className="text-muted-foreground">{log.entityType.toLowerCase()}</span>
                   </p>
                   <span className="shrink-0 text-xs text-muted-foreground">
-                    {new Date(log.createdAt).toLocaleDateString(undefined, {
+                    {new Date(log.createdAt).toLocaleDateString("en-GB", {
                       month: "short", day: "numeric",
                       hour: "2-digit", minute: "2-digit",
                     })}

@@ -7,6 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button }            from "@/components/ui/button";
 import { MoreHorizontal, UserCircle, Trash2 } from "lucide-react";
 import * as DropdownMenu     from "@radix-ui/react-dropdown-menu";
+import { toast }             from "sonner";
+import { useConfirm }        from "@/components/ui/confirm-dialog";
+import { api, errorMessage } from "@/lib/api-client";
 
 export type MemberRowData = {
   membershipId: string;
@@ -29,35 +32,36 @@ export function MemberRow({ member, currentUserId, canManage }: {
 }) {
   const router    = useRouter();
   const [updating, setUpdating] = useState(false);
-  const [error,    setError]    = useState<string | null>(null);
+  const confirm   = useConfirm();
   const isSelf    = member.userId === currentUserId;
 
   const initials = (member.name ?? member.email)
     .split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
 
   async function handleRoleChange(role: string) {
-    setUpdating(true); setError(null);
+    setUpdating(true);
     try {
-      const res  = await fetch(`/api/members/${member.membershipId}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role }),
-      });
-      const json = await res.json();
-      if (!json.success) { setError(json.message); return; }
+      await api.patch(`/api/members/${member.membershipId}`, { role });
+      toast.success(`${member.name ?? member.email} is now ${ROLE_LABEL[role]?.toLowerCase() ?? role}.`);
       router.refresh();
-    } catch { setError("Something went wrong."); }
+    } catch (err) { toast.error(errorMessage(err)); }
     finally  { setUpdating(false); }
   }
 
   async function handleRemove() {
-    if (!confirm(`Remove ${member.name ?? member.email} from the organization?`)) return;
-    setUpdating(true); setError(null);
+    const ok = await confirm({
+      title: `Remove ${member.name ?? member.email}?`,
+      description: "They'll lose access to this organization's projects straight away. Tasks assigned to them stay, unassigned.",
+      confirmLabel: "Remove member",
+      destructive: true,
+    });
+    if (!ok) return;
+    setUpdating(true);
     try {
-      const res  = await fetch(`/api/members/${member.membershipId}`, { method: "DELETE" });
-      const json = await res.json();
-      if (!json.success) { setError(json.message); return; }
+      await api.delete(`/api/members/${member.membershipId}`);
+      toast.success(`Removed ${member.name ?? member.email}.`);
       router.refresh();
-    } catch { setError("Something went wrong."); }
+    } catch (err) { toast.error(errorMessage(err)); }
     finally  { setUpdating(false); }
   }
 
@@ -81,14 +85,14 @@ export function MemberRow({ member, currentUserId, canManage }: {
         {/* Role + joined + actions */}
         <div className="flex shrink-0 items-center gap-2">
           <span className="hidden text-xs text-muted-foreground lg:block">
-            Joined {new Date(member.joinedAt).toLocaleDateString(undefined, {
+            Joined {new Date(member.joinedAt).toLocaleDateString("en-GB", {
               month: "short", day: "numeric", year: "numeric",
             })}
           </span>
 
           {canManage && !isSelf ? (
             <Select value={member.role} onValueChange={handleRoleChange} disabled={updating}>
-              <SelectTrigger className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 w-32 text-xs" aria-label={`Role for ${member.name ?? member.email}`}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="OWNER">Owner</SelectItem>
                 <SelectItem value="MANAGER">Manager</SelectItem>
@@ -104,7 +108,7 @@ export function MemberRow({ member, currentUserId, canManage }: {
 
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8" disabled={updating}>
+              <Button variant="ghost" size="icon" className="h-8 w-8" disabled={updating} aria-label={`Actions for ${member.name ?? member.email}`}>
                 <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenu.Trigger>
@@ -135,7 +139,6 @@ export function MemberRow({ member, currentUserId, canManage }: {
           </DropdownMenu.Root>
         </div>
       </div>
-      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }

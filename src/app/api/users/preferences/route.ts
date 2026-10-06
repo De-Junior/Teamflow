@@ -8,7 +8,6 @@ const preferencesSchema = z.object({
   theme: z.enum(["light", "dark", "system"]).optional(),
   emailNotifications: z.boolean().optional(),
   taskAssignedNotif: z.boolean().optional(),
-  taskUpdatedNotif: z.boolean().optional(),
   defaultView: z.enum(["kanban", "list", "calendar"]).optional(),
 });
 

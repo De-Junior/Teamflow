@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { api, errorMessage } from "@/lib/api-client";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -13,35 +14,20 @@ function VerifyEmailContent() {
   const [status, setStatus] = useState<Status>(() => (token ? "verifying" : "error"));
   const [message, setMessage] = useState<string>(() => (token ? "" : "Missing verification token."));
 
+  // Tokens are single-use, so make sure the request is only ever sent once
+  // (React runs effects twice in development).
+  const sent = useRef(false);
   useEffect(() => {
-    if (!token) return;
+    if (!token || sent.current) return;
+    sent.current = true;
 
-    let cancelled = false;
-
-    fetch("/api/verify-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (cancelled) return;
-        if (data.success) {
-          setStatus("success");
-        } else {
-          setStatus("error");
-          setMessage(data.message ?? "Verification failed.");
-        }
-      })
-      .catch(() => {
-        if (cancelled) return;
+    api.post("/api/verify-email", { token }).then(
+      () => setStatus("success"),
+      (err) => {
         setStatus("error");
-        setMessage("Something went wrong. Please try again.");
-      });
-
-    return () => {
-      cancelled = true;
-    };
+        setMessage(errorMessage(err));
+      }
+    );
   }, [token]);
 
   return (

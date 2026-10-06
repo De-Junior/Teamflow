@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Upload, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { api, ApiClientError, errorMessage } from "@/lib/api-client";
 
 const AVATAR_SIZE = 256;
 
@@ -52,20 +54,12 @@ export function AvatarUpload({ name, image }: { name: string; image: string | nu
     setLoading(true);
     try {
       const dataUrl = await toAvatarDataUrl(file);
-      const res = await fetch("/api/users/avatar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: dataUrl }),
-      });
-      const json = await res.json();
-      if (!json.success) {
-        setError(json.message);
-        return;
-      }
+      await api.post("/api/users/avatar", { image: dataUrl });
       setPreview(dataUrl);
+      toast.success("Profile picture updated.");
       router.refresh();
-    } catch {
-      setError("That image couldn't be processed. Try a JPG or PNG.");
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "That image couldn't be processed. Try a JPG or PNG.");
     } finally {
       setLoading(false);
     }
@@ -75,12 +69,11 @@ export function AvatarUpload({ name, image }: { name: string; image: string | nu
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/users/avatar", { method: "DELETE" });
-      if (!res.ok) throw new Error();
+      await api.delete("/api/users/avatar");
       setPreview(null);
       router.refresh();
-    } catch {
-      setError("Something went wrong.");
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -92,7 +85,7 @@ export function AvatarUpload({ name, image }: { name: string; image: string | nu
         {preview ? (
           // A data URL can't benefit from next/image optimisation, so a plain img is correct here.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={preview} alt={name} className="h-full w-full object-cover" />
+          <img src={preview} alt="" className="h-full w-full object-cover" />
         ) : (
           initials
         )}
@@ -112,7 +105,7 @@ export function AvatarUpload({ name, image }: { name: string; image: string | nu
           )}
         </div>
         <p className="text-xs text-muted-foreground">JPG, PNG or WebP. Cropped to a square.</p>
-        {error && <p className="text-xs text-destructive">{error}</p>}
+        {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
       </div>
     </div>
   );

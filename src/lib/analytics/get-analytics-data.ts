@@ -29,8 +29,9 @@ export async function getAnalyticsData(tenantId: string, from: Date, to: Date) {
     }),
 
     prisma.task.findMany({
-      where: { tenantId, status: "DONE", updatedAt: { gte: from, lte: to } },
-      select: { updatedAt: true, createdAt: true },
+      // completedAt is set when a task moves to Done, so later edits don't move it in the chart.
+      where: { tenantId, completedAt: { gte: from, lte: to } },
+      select: { completedAt: true },
     }),
 
     prisma.project.findMany({
@@ -45,7 +46,7 @@ export async function getAnalyticsData(tenantId: string, from: Date, to: Date) {
         title: true,
         status: true,
         createdAt: true,
-        updatedAt: true,
+        completedAt: true,
         dueDate: true,
         assigneeId: true,
         assignee: { select: { name: true, email: true } },
@@ -71,7 +72,7 @@ export async function getAnalyticsData(tenantId: string, from: Date, to: Date) {
     label: bucket.label,
     value: tasksCompletedInRange.filter(
       (t: (typeof tasksCompletedInRange)[number]) =>
-        t.updatedAt >= bucket.start && t.updatedAt < bucket.end
+        t.completedAt! >= bucket.start && t.completedAt! < bucket.end
     ).length,
   }));
 
@@ -101,10 +102,10 @@ export async function getAnalyticsData(tenantId: string, from: Date, to: Date) {
     .slice(0, 5);
 
   const completedWithDuration = allTasksWithAssignee
-    .filter((t: (typeof allTasksWithAssignee)[number]) => t.status === "DONE")
+    .filter((t: (typeof allTasksWithAssignee)[number]) => t.status === "DONE" && t.completedAt)
     .map(
       (t: (typeof allTasksWithAssignee)[number]) =>
-        t.updatedAt.getTime() - t.createdAt.getTime()
+        t.completedAt!.getTime() - t.createdAt.getTime()
     );
   const avgCompletionMs =
     completedWithDuration.length === 0

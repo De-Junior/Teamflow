@@ -59,7 +59,14 @@ export async function removeMember(actor: Actor, membershipId: string) {
   if (membership.userId === actor.userId) throw conflict("You can't remove yourself from the organization.");
   if (membership.role === Role.OWNER) await assertAnotherOwnerRemains(actor);
 
-  await prisma.membership.delete({ where: { id: membership.id } });
+  // Leaving the organization also takes them off its projects and unassigns
+  // their work, so nothing stays assigned to someone who can't see it.
+  const { tenantId } = actor.tenant;
+  await prisma.$transaction([
+    prisma.task.updateMany({ where: { tenantId, assigneeId: membership.userId }, data: { assigneeId: null } }),
+    prisma.projectMember.deleteMany({ where: { tenantId, userId: membership.userId } }),
+    prisma.membership.delete({ where: { id: membership.id } }),
+  ]);
   await writeAuditLog(actor.tenant, {
     action: "DELETED",
     entityType: "Membership",

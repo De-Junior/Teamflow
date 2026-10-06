@@ -7,6 +7,7 @@ export type DeadlineTask = {
   title: string;
   dueDate: string;
   projectId: string;
+  projectName: string;
 };
 
 function groupByBucket(tasks: DeadlineTask[]) {
@@ -69,8 +70,9 @@ export function UpcomingDeadlinesWidget({ tasks }: { tasks: DeadlineTask[] }) {
                       href={`/projects/${task.projectId}`}
                       className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
                     >
-                      <Calendar className="size-3.5 shrink-0 text-muted-foreground" />
-                      <span className="truncate">{task.title}</span>
+                      <Calendar aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1 truncate">{task.title}</span>
+                      <span className="hidden shrink-0 truncate text-xs text-muted-foreground sm:block sm:max-w-[40%]">{task.projectName}</span>
                     </Link>
                   ))}
                 </div>

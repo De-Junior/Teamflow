@@ -19,18 +19,17 @@ export function SettingsTabs({
     { href: "/settings/members", label: "Members" },
     ...(canManageOrg ? [{ href: "/settings/organization", label: "Organization" }] : []),
     { href: "/settings/permissions", label: "Permissions" },
-    { href: "/settings/notifications", label: "Notifications" },
     ...(canManageBilling ? [{ href: "/settings/billing", label: "Billing" }] : []),
-    { href: "/settings/security", label: "Security" },
     ...(canDeleteOrg ? [{ href: "/settings/danger", label: "Danger zone", danger: true }] : []),
   ];
 
   return (
-    <nav className="flex overflow-x-auto border-b border-border">
+    <nav aria-label="Settings" className="flex overflow-x-auto border-b border-border">
       {tabs.map(({ href, label, danger }) => (
         <Link
           key={href}
           href={href}
+          aria-current={pathname.startsWith(href) ? "page" : undefined}
           className={cn(
             "-mb-px shrink-0 border-b-2 px-4 py-2 text-sm font-medium transition-colors",
             pathname.startsWith(href)

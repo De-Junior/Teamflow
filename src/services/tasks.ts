@@ -165,6 +165,13 @@ async function notifyAssignee(
 ) {
   if (task.assigneeId === actor.userId) return;
 
+  // Respect the assignee's notification preferences (no row means defaults: on).
+  const preferences = await prisma.userPreferences.findUnique({
+    where: { userId: task.assigneeId },
+    select: { taskAssignedNotif: true, emailNotifications: true },
+  });
+  if (preferences && !preferences.taskAssignedNotif) return;
+
   await createNotification({
     tenantId: actor.tenant.tenantId,
     organizationId: actor.tenant.organizationId,
@@ -177,7 +184,7 @@ async function notifyAssignee(
   });
 
   const assignee = await prisma.user.findUnique({ where: { id: task.assigneeId }, select: { email: true, name: true } });
-  if (!assignee) return;
+  if (!assignee || preferences?.emailNotifications === false) return;
   await sendTaskAssignedEmail({
     tenantId: actor.tenant.tenantId,
     to: assignee.email,

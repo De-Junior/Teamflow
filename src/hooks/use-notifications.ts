@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { getPusherClient } from "@/lib/pusher/client";
 import { userChannel } from "@/lib/pusher/channels";
-
+import { api } from "@/lib/api-client";
 
 interface Notification {
   id: string;
@@ -28,9 +28,7 @@ export function useNotifications() {
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const res = await fetch("/api/notifications");
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await api.get<{ notifications: Notification[]; unreadCount: number }>("/api/notifications");
       setNotifications(data.notifications);
       setUnreadCount(data.unreadCount);
     } catch {
@@ -43,21 +41,14 @@ export function useNotifications() {
   const markRead = useCallback(async (id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
     setUnreadCount((prev) => Math.max(0, prev - 1));
-    await fetch("/api/notifications", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
+    // Best effort: the next poll corrects the badge if this fails.
+    await api.patch("/api/notifications", { id }).catch(() => {});
   }, []);
 
   const markAllRead = useCallback(async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     setUnreadCount(0);
-    await fetch("/api/notifications", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ markAll: true }),
-    });
+    await api.patch("/api/notifications", { markAll: true }).catch(() => {});
   }, []);
 
   // Initial fetch + polling fallback (in case a Pusher event is missed)
@@ -84,6 +75,7 @@ export function useNotifications() {
     if (!userId) return;
 
     const pusherClient = getPusherClient();
+    if (!pusherClient) return;
     const channel = pusherClient.subscribe(userChannel(userId));
 
     const handleNew = (notification: Notification) => {

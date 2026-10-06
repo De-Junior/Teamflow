@@ -45,6 +45,13 @@ export default auth(async function proxy(req: NextRequest & { auth: unknown }) {
   // race condition) — that's not a valid authenticated state for anything
   // tenant-scoped, so treat it the same as "not logged in".
   if (!isPublic && !session?.user?.organizationId) {
+    // API callers get a JSON 401 in the standard envelope, not an HTML redirect.
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { success: false, code: "unauthorized", message: "Please sign in to continue." },
+        { status: 401 }
+      );
+    }
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
@@ -54,7 +61,7 @@ export default auth(async function proxy(req: NextRequest & { auth: unknown }) {
     const orgId = req.headers.get("x-organization-id");
     if (orgId && orgId !== session.user.organizationId) {
       return NextResponse.json(
-        { success: false, message: "Tenant mismatch" },
+        { success: false, code: "forbidden", message: "Tenant mismatch" },
         { status: 403 }
       );
     }

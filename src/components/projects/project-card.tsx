@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { api, errorMessage } from "@/lib/api-client";
 import {
   MoreHorizontal, Edit2, Archive, Trash2, Copy,
   Calendar, CheckCircle2, ArchiveRestore,
@@ -80,6 +83,7 @@ export function ProjectCard({
   const [archiving,   setArchiving]   = useState(false);
   const [duplicating, setDuplicating] = useState(false);
 
+  const confirm = useConfirm();
   const isArchived = project.status === "ARCHIVED";
   const progress   = project.taskCount > 0
     ? Math.round((project.doneCount / project.taskCount) * 100)
@@ -89,36 +93,45 @@ export function ProjectCard({
     && !isArchived;
 
   async function handleDelete() {
-    if (!confirm("Delete this project? This cannot be undone.")) return;
+    const ok = await confirm({
+      title: `Delete "${project.name}"?`,
+      description: `Its ${project.taskCount === 1 ? "task" : `${project.taskCount} tasks`} will be deleted too. This can't be undone.`,
+      confirmLabel: "Delete project",
+      destructive: true,
+    });
+    if (!ok) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
-      if (res.ok) { onDelete(project.id); router.refresh(); }
-    } catch { /* silent */ }
-    finally { setDeleting(false); }
+      await api.delete(`/api/projects/${project.id}`);
+      onDelete(project.id);
+      toast.success(`Deleted "${project.name}".`);
+      router.refresh();
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally { setDeleting(false); }
   }
 
   async function handleArchive() {
     setArchiving(true);
     try {
       const newStatus = isArchived ? "ACTIVE" : "ARCHIVED";
-      const res = await fetch(`/api/projects/${project.id}`, {
-        method:  "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ status: newStatus }),
-      });
-      if (res.ok) { onArchive(project.id); router.refresh(); }
-    } catch { /* silent */ }
-    finally { setArchiving(false); }
+      await api.patch(`/api/projects/${project.id}`, { status: newStatus });
+      onArchive(project.id);
+      toast.success(isArchived ? "Project restored." : "Project archived.");
+      router.refresh();
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally { setArchiving(false); }
   }
 
   async function handleDuplicate() {
     setDuplicating(true);
     try {
-      const res  = await fetch(`/api/projects/${project.id}/duplicate`, { method: "POST" });
-      const json = await res.json();
-      if (json.success) {
-        const d = json.data;
+      const d = await api.post<{
+        id: string; name: string; description: string | null; status: string; priority: string;
+        dueDate: string | null; createdAt: string; updatedAt: string; taskCount?: number;
+      }>(`/api/projects/${project.id}/duplicate`);
+      {
         onDuplicate({
           id:          d.id,
           name:        d.name,
@@ -132,10 +145,12 @@ export function ProjectCard({
           doneCount:   0,
           members:     [],
         });
+        toast.success(`Created "${d.name}".`);
         router.refresh();
       }
-    } catch { /* silent */ }
-    finally { setDuplicating(false); }
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally { setDuplicating(false); }
   }
 
   const hasMenu = canUpdate || canArchive || canDelete;
@@ -277,7 +292,7 @@ export function ProjectCard({
               <Calendar className={cn("size-3", isOverdue && "text-destructive")} />
               {project.dueDate ? (
                 <span className={cn(isOverdue && "text-destructive font-medium")}>
-                  {new Date(project.dueDate).toLocaleDateString("en-GB", {
+                  {new Date(project.dueDate).toLocaleDateString("en-GB", { timeZone: "UTC",
                     month: "short", day: "numeric", year: "numeric",
                   })}
                 </span>

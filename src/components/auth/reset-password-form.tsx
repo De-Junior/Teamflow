@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff } from "lucide-react";
+import { api, errorMessage } from "@/lib/api-client";
 
 // Local schema — adds confirmPassword. Only token+password are sent to the API.
 const resetFormSchema = z
@@ -49,16 +50,10 @@ export function ResetPasswordForm() {
     setIsSubmitting(true);
     try {
       // Send only token + password — confirmPassword is UI-only
-      const res = await fetch("/api/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: values.token, password: values.password }),
-      });
-      const json = await res.json();
-      if (!json.success) { setServerError(json.message); return; }
+      await api.post("/api/reset-password", { token: values.token, password: values.password });
       router.push("/login?reset=true");
-    } catch {
-      setServerError("Something went wrong. Please try again.");
+    } catch (err) {
+      setServerError(errorMessage(err));
     } finally {
       setIsSubmitting(false);
     }

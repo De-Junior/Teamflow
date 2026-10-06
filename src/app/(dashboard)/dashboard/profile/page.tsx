@@ -6,7 +6,7 @@ export default async function ProfilePage() {
   const session = await auth();
   const dbUser  = await prisma.user.findUnique({
     where:  { id: session!.user.id },
-    select: { name: true, email: true, image: true, phone: true, timezone: true, language: true, bio: true },
+    select: { name: true, email: true, image: true, phone: true, timezone: true, bio: true, password: true },
   });
 
   return (
@@ -17,8 +17,8 @@ export default async function ProfilePage() {
         image:    dbUser?.image ?? null,
         phone:    dbUser?.phone ?? "",
         timezone: dbUser?.timezone ?? "UTC",
-        language: dbUser?.language ?? "en",
         bio:      dbUser?.bio ?? "",
+        hasPassword: Boolean(dbUser?.password),
       }}
     />
   );

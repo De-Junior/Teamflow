@@ -7,11 +7,12 @@ export const GET = route("users.stats", async () => {
   const { tenantId } = actor.tenant;
   const userId = actor.userId;
 
-  const [tasksCompleted, projects, commentsCount, filesUploaded] = await Promise.all([
+  const [tasksCompleted, projects, commentsCount, time] = await Promise.all([
     prisma.task.count({ where: { tenantId, assigneeId: userId, status: "DONE" } }),
     prisma.task.groupBy({ by: ["projectId"], where: { tenantId, assigneeId: userId } }),
     prisma.comment.count({ where: { tenantId, authorId: userId } }),
-    prisma.file.count({ where: { tenantId, uploadedById: userId } }),
+    prisma.timeEntry.aggregate({ where: { userId, task: { tenantId } }, _sum: { minutes: true } }),
   ]);
-  return ok({ tasksCompleted, projectsInvolved: projects.length, commentsCount, filesUploaded });
+  const hoursLogged = Math.round(((time._sum.minutes ?? 0) / 60) * 10) / 10;
+  return ok({ tasksCompleted, projectsInvolved: projects.length, commentsCount, hoursLogged });
 });

@@ -29,7 +29,7 @@ const ACTION_LABEL: Record<string,string> = {
 };
 
 function fmt(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
+  return new Date(iso).toLocaleDateString("en-GB", {
     month:"short", day:"numeric", year:"numeric", hour:"2-digit", minute:"2-digit",
   });
 }
@@ -98,7 +98,7 @@ export default async function MemberProfilePage({
               </span>
               <span className="flex items-center gap-1.5">
                 <Calendar className="size-3.5" />
-                Joined {new Date(membership.joinedAt).toLocaleDateString(undefined, {
+                Joined {new Date(membership.joinedAt).toLocaleDateString("en-GB", {
                   year:"numeric", month:"long", day:"numeric",
                 })}
               </span>

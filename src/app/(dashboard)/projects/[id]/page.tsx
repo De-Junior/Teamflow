@@ -17,7 +17,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     userId:         session!.user.id,
   };
 
-  const [project, projectMembers, orgMembers] = await Promise.all([
+  const [project, projectMembers, orgMembers, preferences] = await Promise.all([
     projectRepository(ctx).findById(id, {
       include: {
         tasks: {
@@ -38,6 +38,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       where:   { tenantId: ctx.tenantId },
       include: { user: { select: { id: true, name: true, image: true } } },
     }),
+    prisma.userPreferences.findUnique({ where: { userId: ctx.userId }, select: { defaultView: true } }),
   ]);
 
   if (!project) notFound();
@@ -91,6 +92,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         canManageMembers={canManageMembers}
         userRole={session!.user.role}
         currentUserId={session!.user.id}
+        initialView={preferences?.defaultView}
       />
     </div>
   );

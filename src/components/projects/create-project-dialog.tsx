@@ -17,6 +17,8 @@ import {
   DialogDescription, DialogFooter, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Plus } from "lucide-react";
+import { toast } from "sonner";
+import { api, errorMessage } from "@/lib/api-client";
 import type { ProjectData } from "./project-card";
 
 export function CreateProjectDialog({
@@ -53,20 +55,16 @@ export function CreateProjectDialog({
     };
 
     try {
-      const res  = await fetch("/api/projects", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(body),
-      });
-      const json = await res.json();
-
-      if (!json.success) { setServerError(json.message); return; }
+      const d = await api.post<{
+        id: string; name: string; description: string | null; status: string; priority: string;
+        dueDate: string | null; createdAt: string; updatedAt: string;
+      }>("/api/projects", body);
 
       setOpen(false);
       reset();
+      toast.success(`Created "${d.name}".`);
 
       if (onCreated) {
-        const d = json.data;
         onCreated({
           id:          d.id,
           name:        d.name,
@@ -83,8 +81,8 @@ export function CreateProjectDialog({
       } else {
         router.refresh();
       }
-    } catch {
-      setServerError("Something went wrong. Please try again.");
+    } catch (err) {
+      setServerError(errorMessage(err));
     } finally {
       setIsSubmitting(false);
     }

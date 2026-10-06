@@ -4,6 +4,8 @@ import { useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { UserPlus, Check } from "lucide-react";
 import type { Member } from "@/components/projects/project-view";
+import { toast } from "sonner";
+import { api, errorMessage } from "@/lib/api-client";
 
 export function ProjectMembersManager({
   projectId,
@@ -22,14 +24,11 @@ export function ProjectMembersManager({
   async function toggle(userId: string, isMember: boolean) {
     setPending(userId);
     try {
-      await fetch(`/api/projects/${projectId}/members`, {
-        method:  isMember ? "DELETE" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ userId }),
-      });
+      const url = `/api/projects/${projectId}/members`;
+      await (isMember ? api.delete(url, { userId }) : api.post(url, { userId }));
       onMembersChanged();
-    } catch {
-      /* silent */
+    } catch (err) {
+      toast.error(errorMessage(err));
     } finally {
       setPending(null);
     }
@@ -61,7 +60,7 @@ export function ProjectMembersManager({
                 className="flex cursor-pointer items-center justify-between gap-2 rounded-sm px-3 py-2 text-sm outline-none hover:bg-muted"
               >
                 <span>{u.name ?? "Unnamed user"}</span>
-                {isMember && <Check className="size-3.5 text-green-500" />}
+                {isMember && <Check aria-label="Member" className="size-3.5 text-green-500" />}
                 {pending === u.id && <span className="text-xs text-muted-foreground">…</span>}
               </DropdownMenu.Item>
             );

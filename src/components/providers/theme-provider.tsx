@@ -61,6 +61,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
     window.dispatchEvent(new Event(CHANGE_EVENT));
     // Persist to the user's preferences in the background.
+    // Signed-out pages get a 401 here, which is fine: localStorage already has it.
     fetch("/api/users/preferences", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

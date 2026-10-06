@@ -8,6 +8,7 @@ import { registerSchema, type RegisterInput } from "@/validations/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { api, ApiClientError, errorMessage } from "@/lib/api-client";
 
 export function RegisterForm() {
   const router = useRouter();
@@ -21,6 +22,7 @@ export function RegisterForm() {
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
@@ -32,23 +34,17 @@ export function RegisterForm() {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch("/api/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...values, inviteToken: inviteToken ?? undefined }),
-      });
-      const json = await res.json();
-
-      if (!json.success) {
-        setServerError(json.message);
-        return;
-      }
-
+      await api.post("/api/register", { ...values, inviteToken: inviteToken ?? undefined });
       router.push(
         inviteToken ? "/login?registered=true&fromInvite=true" : "/login?registered=true"
       );
-    } catch {
-      setServerError("Something went wrong. Please try again.");
+    } catch (err) {
+      // Show field problems next to the field; everything else above the button.
+      const fields = err instanceof ApiClientError ? err.fields ?? {} : {};
+      const known = (["name", "email", "password"] as const).filter((f) => fields[f]);
+      known.forEach((f) => setError(f, { message: fields[f] }));
+      if (err instanceof ApiClientError && err.code === "conflict") setError("email", { message: err.message });
+      else if (known.length === 0) setServerError(errorMessage(err));
     } finally {
       setIsSubmitting(false);
     }

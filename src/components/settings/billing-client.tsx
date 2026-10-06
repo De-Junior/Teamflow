@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { toast } from "sonner";
+import { api, errorMessage } from "@/lib/api-client";
 import { SubscriptionPlan, SubscriptionStatus } from "@prisma/client";
 
 type BillingData = {
@@ -63,20 +65,10 @@ export function BillingClient({ billing }: { billing: BillingData }) {
   async function handleUpgrade(plan: "PROFESSIONAL" | "ENTERPRISE") {
     setLoading(plan);
     try {
-      const res = await fetch("/api/billing/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
-      });
-      const json = await res.json();
-      if (json.success && json.data?.url) {
-        window.location.assign(json.data.url);
-      } else {
-        alert(json.message ?? "Something went wrong.");
-      }
-    } catch {
-      alert("Something went wrong. Please try again.");
-    } finally {
+      const { url } = await api.post<{ url: string }>("/api/billing/checkout", { plan });
+      window.location.assign(url);
+    } catch (err) {
+      toast.error(errorMessage(err));
       setLoading(null);
     }
   }
@@ -84,16 +76,10 @@ export function BillingClient({ billing }: { billing: BillingData }) {
   async function handleManageBilling() {
     setLoading("portal");
     try {
-      const res = await fetch("/api/billing/portal", { method: "POST" });
-      const json = await res.json();
-      if (json.success && json.data?.url) {
-        window.location.assign(json.data.url);
-      } else {
-        alert(json.message ?? "Something went wrong.");
-      }
-    } catch {
-      alert("Something went wrong. Please try again.");
-    } finally {
+      const { url } = await api.post<{ url: string }>("/api/billing/portal");
+      window.location.assign(url);
+    } catch (err) {
+      toast.error(errorMessage(err));
       setLoading(null);
     }
   }
@@ -107,12 +93,12 @@ export function BillingClient({ billing }: { billing: BillingData }) {
           <span className="font-semibold">{currentPlan.label}</span> plan.
           {billing.cancelAtPeriodEnd && billing.currentPeriodEnd && (
             <span className="ml-1 text-destructive">
-              Cancels on {new Date(billing.currentPeriodEnd).toLocaleDateString()}.
+              Cancels on {new Date(billing.currentPeriodEnd).toLocaleDateString("en-GB")}.
             </span>
           )}
           {!billing.cancelAtPeriodEnd && billing.currentPeriodEnd && (
             <span className="ml-1">
-              Renews on {new Date(billing.currentPeriodEnd).toLocaleDateString()}.
+              Renews on {new Date(billing.currentPeriodEnd).toLocaleDateString("en-GB")}.
             </span>
           )}
         </p>

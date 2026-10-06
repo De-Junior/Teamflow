@@ -29,7 +29,7 @@ type TabId = typeof TABS[number]["id"];
 export function ProfileClient({ user }: {
   user: {
     name: string; email: string; image: string | null;
-    phone: string; timezone: string; language: string; bio: string;
+    phone: string; timezone: string; bio: string; hasPassword: boolean;
   };
 }) {
   const [tab, setTab] = useState<TabId>("personal");
@@ -43,9 +43,9 @@ export function ProfileClient({ user }: {
 
       <AvatarUpload name={user.name} image={user.image} />
 
-      <div className="flex gap-1 overflow-x-auto border-b border-border">
+      <div role="tablist" aria-label="Profile sections" className="flex gap-1 overflow-x-auto border-b border-border">
         {TABS.map(({ id, label }) => (
-          <button key={id} onClick={() => setTab(id)}
+          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
             className={cn(
               "-mb-px shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
               tab === id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
@@ -63,10 +63,10 @@ export function ProfileClient({ user }: {
             <PersonalInfoForm
               initialName={user.name} email={user.email}
               initialPhone={user.phone} initialTimezone={user.timezone}
-              initialLanguage={user.language} initialBio={user.bio}
+              initialBio={user.bio}
             />
           )}
-          {tab === "password"    && <PasswordForm />}
+          {tab === "password"    && <PasswordForm hasPassword={user.hasPassword} />}
           {tab === "accounts"    && <ConnectedAccountsPanel />}
           {tab === "preferences" && <PreferencesForm />}
           {tab === "sessions"    && <SessionsPanel />}

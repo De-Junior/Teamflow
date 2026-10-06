@@ -39,7 +39,7 @@ export default async function OrganizationSettingsPage() {
           <div className="flex flex-col gap-1">
             <p className="text-xs text-muted-foreground">Created</p>
             <p className="text-sm text-foreground">
-              {org.createdAt.toLocaleDateString(undefined, {
+              {org.createdAt.toLocaleDateString("en-GB", {
                 year: "numeric", month: "long", day: "numeric",
               })}
             </p>

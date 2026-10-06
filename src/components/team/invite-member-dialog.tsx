@@ -25,6 +25,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { UserPlus } from "lucide-react";
+import { toast } from "sonner";
+import { api, errorMessage, fieldError } from "@/lib/api-client";
 
 export function InviteMemberDialog() {
   const router = useRouter();
@@ -37,6 +39,7 @@ export function InviteMemberDialog() {
     handleSubmit,
     control,
     reset,
+    setError,
     formState: { errors },
   } = useForm<InviteMemberInput>({
     resolver: zodResolver(inviteMemberSchema),
@@ -48,23 +51,15 @@ export function InviteMemberDialog() {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch("/api/invitations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
-      });
-      const json = await res.json();
-
-      if (!json.success) {
-        setServerError(json.message);
-        return;
-      }
-
+      await api.post("/api/invitations", values);
       setOpen(false);
       reset();
+      toast.success(`Invitation sent to ${values.email}.`);
       router.refresh();
-    } catch {
-      setServerError("Something went wrong. Please try again.");
+    } catch (err) {
+      const emailError = fieldError(err, "email");
+      if (emailError) setError("email", { message: emailError });
+      else setServerError(errorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -90,18 +85,18 @@ export function InviteMemberDialog() {
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" placeholder="teammate@company.com" {...register("email")} />
+            <Input id="email" type="email" autoComplete="off" placeholder="teammate@company.com" aria-invalid={Boolean(errors.email)} {...register("email")} />
             {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label>Role</Label>
+            <Label htmlFor="invite-role">Role</Label>
             <Controller
               control={control}
               name="role"
               render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger>
+                  <SelectTrigger id="invite-role">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

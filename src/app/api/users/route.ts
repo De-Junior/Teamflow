@@ -13,7 +13,6 @@ const profileSchema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters.").max(100).optional(),
   phone: z.string().trim().max(30).optional().nullable(),
   timezone: z.string().max(60).optional().nullable(),
-  language: z.string().max(10).optional(),
   bio: z.string().max(500).optional().nullable(),
 });
 
@@ -28,7 +27,7 @@ export const GET = route("users.me", async () => {
   const actor = await requireActor();
   const user = await prisma.user.findUnique({
     where: { id: actor.userId },
-    select: { name: true, email: true, phone: true, timezone: true, language: true, bio: true, image: true, createdAt: true },
+    select: { name: true, email: true, phone: true, timezone: true, bio: true, image: true, createdAt: true },
   });
   return ok(user);
 });

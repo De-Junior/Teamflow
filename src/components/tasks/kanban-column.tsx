@@ -5,32 +5,34 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { cn }                                   from "@/lib/utils";
 import { TaskCard, type TaskCardData }           from "@/components/tasks/task-card";
 import { CreateTaskDialog }                     from "@/components/tasks/create-task-dialog";
+import { hasPermission }                        from "@/lib/auth/permissions";
+import type { Role }                            from "@prisma/client";
 
 const COLUMN_DOT: Record<string,string> = {
   BACKLOG:"bg-[var(--status-backlog)]", TODO:"bg-[var(--status-todo)]",
   IN_PROGRESS:"bg-[var(--status-in-progress)]", REVIEW:"bg-[var(--status-review)]",
   DONE:"bg-[var(--status-done)]",
 };
-const CAN_CREATE = ["SUPER_ADMIN","OWNER","MANAGER"];
 
-export function KanbanColumn({ status, label, tasks, projectId, userRole, onTaskCreated, onTaskDeleted, onTaskMarkedDone, onTaskClick }: {
+export function KanbanColumn({ status, label, tasks, projectId, userRole, canDrag, onTaskCreated, onTaskDeleted, onTaskMarkedDone, onTaskClick }: {
   status:           string; label: string;
   tasks:            TaskCardData[];
   projectId:        string; userRole: string;
+  canDrag:          boolean;
   onTaskCreated:    () => void;
   onTaskDeleted:    (id: string) => void;
   onTaskMarkedDone: (id: string) => void;
   onTaskClick?:     (id: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status, data: { type: "column", status } });
-  const canCreate = CAN_CREATE.includes(userRole);
+  const canCreate = hasPermission(userRole as Role, "task:create");
 
   return (
-    <div className="flex w-72 shrink-0 flex-col gap-3">
+    <section aria-label={`${label}, ${tasks.length} ${tasks.length === 1 ? "task" : "tasks"}`} className="flex w-72 shrink-0 snap-start flex-col gap-3">
       <div className="flex items-center gap-2 px-1">
-        <span className={cn("size-2 rounded-full", COLUMN_DOT[status])} />
+        <span aria-hidden className={cn("size-2 rounded-full", COLUMN_DOT[status])} />
         <h3 className="text-sm font-medium text-foreground">{label}</h3>
-        <span className="text-xs text-muted-foreground">{tasks.length}</span>
+        <span aria-hidden className="text-xs tabular-nums text-muted-foreground">{tasks.length}</span>
       </div>
 
       <SortableContext items={tasks.map(t=>t.id)} strategy={verticalListSortingStrategy}>
@@ -41,18 +43,23 @@ export function KanbanColumn({ status, label, tasks, projectId, userRole, onTask
           )}
         >
           {tasks.map(task => (
-            <TaskCard key={task.id} task={task} userRole={userRole}
+            <TaskCard key={task.id} task={task} userRole={userRole} canDrag={canDrag}
               onTaskDeleted={onTaskDeleted}
               onTaskMarkedDone={onTaskMarkedDone}
               onTaskClick={onTaskClick}
             />
           ))}
+          {tasks.length === 0 && (
+            <p className="flex min-h-20 items-center justify-center rounded-md text-xs text-muted-foreground/70">
+              {canDrag ? "Drop tasks here" : "No tasks"}
+            </p>
+          )}
         </div>
       </SortableContext>
 
       {canCreate && (
         <CreateTaskDialog projectId={projectId} defaultStatus={status} onCreated={onTaskCreated} />
       )}
-    </div>
+    </section>
   );
 }

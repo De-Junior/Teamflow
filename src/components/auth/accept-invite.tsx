@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { api, errorMessage } from "@/lib/api-client";
 
 type InviteInfo = {
   email: string;
@@ -22,16 +23,7 @@ export function AcceptInvite({ token }: { token: string }) {
   const [acceptError, setAcceptError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/invitations/${token}`)
-      .then((res) => res.json())
-      .then((json) => {
-        if (!json.success) {
-          setLoadError(json.message);
-          return;
-        }
-        setInvite(json.data);
-      })
-      .catch(() => setLoadError("Couldn't load this invitation. Please try again."));
+    api.get<InviteInfo>(`/api/invitations/${token}`).then(setInvite, (err) => setLoadError(errorMessage(err)));
   }, [token]);
 
   async function handleAccept() {
@@ -39,23 +31,12 @@ export function AcceptInvite({ token }: { token: string }) {
     setAcceptError(null);
 
     try {
-      const res = await fetch(`/api/invitations/${token}`, { method: "POST" });
-      const json = await res.json();
-
-      if (!json.success) {
-        setAcceptError(json.message);
-        return;
-      }
-
-      await update({
-        organizationId: json.data.organizationId,
-        role: json.data.role,
-      });
-
+      const joined = await api.post<{ organizationId: string; role: string }>(`/api/invitations/${token}`);
+      await update({ organizationId: joined.organizationId, role: joined.role });
       router.push("/dashboard");
       router.refresh();
-    } catch {
-      setAcceptError("Something went wrong. Please try again.");
+    } catch (err) {
+      setAcceptError(errorMessage(err));
     } finally {
       setIsAccepting(false);
     }

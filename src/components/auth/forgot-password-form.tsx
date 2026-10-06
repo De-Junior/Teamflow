@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CheckCircle2 } from "lucide-react";
+import { api, errorMessage } from "@/lib/api-client";
 
 export function ForgotPasswordForm() {
   const [submitted, setSubmitted] = useState(false);
@@ -27,21 +28,10 @@ export function ForgotPasswordForm() {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch("/api/forgot-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
-      });
-      const json = await res.json();
-
-      if (!json.success) {
-        setServerError(json.message);
-        return;
-      }
-
+      await api.post("/api/forgot-password", values);
       setSubmitted(true);
-    } catch {
-      setServerError("Something went wrong. Please try again.");
+    } catch (err) {
+      setServerError(errorMessage(err));
     } finally {
       setIsSubmitting(false);
     }

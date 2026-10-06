@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Mail, X } from "lucide-react";
+import { toast } from "sonner";
+import { api, errorMessage } from "@/lib/api-client";
 
 type PendingInvite = {
   id: string;
@@ -21,25 +23,20 @@ export function PendingInvitationsBanner() {
   const [processingToken, setProcessingToken] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/my-invitations")
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success) setInvites(json.data);
-      })
-      .catch(() => {});
+    // The banner is optional chrome; if this fails the page still works.
+    api.get<PendingInvite[]>("/api/my-invitations").then(setInvites, () => {});
   }, []);
 
   async function handleAccept(invite: PendingInvite) {
     setProcessingToken(invite.token);
     try {
-      const res = await fetch(`/api/invitations/${invite.token}`, { method: "POST" });
-      const json = await res.json();
-
-      if (!json.success) return;
-
-      await update({ organizationId: json.data.organizationId, role: json.data.role });
+      const joined = await api.post<{ organizationId: string; role: string }>(`/api/invitations/${invite.token}`);
+      await update({ organizationId: joined.organizationId, role: joined.role });
       setInvites((prev) => prev.filter((i) => i.token !== invite.token));
+      toast.success(`You joined ${invite.organization.name}.`);
       router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
     } finally {
       setProcessingToken(null);
     }
@@ -48,11 +45,10 @@ export function PendingInvitationsBanner() {
   async function handleDecline(invite: PendingInvite) {
     setProcessingToken(invite.token);
     try {
-      const res = await fetch(`/api/invitations/${invite.token}`, { method: "DELETE" });
-      const json = await res.json();
-      if (json.success) {
-        setInvites((prev) => prev.filter((i) => i.token !== invite.token));
-      }
+      await api.delete(`/api/invitations/${invite.token}`);
+      setInvites((prev) => prev.filter((i) => i.token !== invite.token));
+    } catch (error) {
+      toast.error(errorMessage(error));
     } finally {
       setProcessingToken(null);
     }
@@ -65,7 +61,7 @@ export function PendingInvitationsBanner() {
       {invites.map((invite) => (
         <div
           key={invite.id}
-          className="flex items-center justify-between gap-3 rounded-md border border-primary/30 bg-accent px-4 py-3"
+          className="flex flex-col gap-3 rounded-md border border-primary/30 bg-accent px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
         >
           <div className="flex items-center gap-2.5">
             <Mail className="size-4 shrink-0 text-accent-foreground" />
