@@ -1,55 +1,23 @@
-﻿import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
+import { badRequest } from "@/lib/api/errors";
+import { forbidOnDemo } from "@/lib/api/demo-guard";
+import { ok, route } from "@/lib/api/handler";
+import { requirePermission } from "@/lib/api/session";
 import { getStripe } from "@/lib/stripe/client";
-import { requirePermission, UnauthorizedError } from "@/lib/auth/permissions";
-import { Role } from "@prisma/client";
 
-export async function POST() {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  }
+export const POST = route("billing.portal", async () => {
+  const actor = await requirePermission("org:billing");
+  forbidOnDemo(actor);
 
-  try {
-    requirePermission(session.user.role as Role, "org:billing");
-  } catch (error) {
-    if (error instanceof UnauthorizedError) {
-      return NextResponse.json({ success: false, message: error.message }, { status: 403 });
-    }
-    throw error;
-  }
+  const subscription = await prisma.subscription.findUnique({
+    where: { organizationId: actor.tenant.organizationId },
+    select: { stripeCustomerId: true },
+  });
+  if (!subscription?.stripeCustomerId) throw badRequest("This organization has no billing account yet.");
 
-  const ctx = {
-    tenantId: session.user.tenantId,
-    organizationId: session.user.organizationId,
-    userId: session.user.id,
-  };
-
-  try {
-    const subscription = await prisma.subscription.findUnique({
-      where: { organizationId: ctx.organizationId },
-    });
-
-    if (!subscription?.stripeCustomerId) {
-      return NextResponse.json(
-        { success: false, message: "No billing account found for this organization yet." },
-        { status: 400 }
-      );
-    }
-
-    const stripe = getStripe();
-    const portalSession = await stripe.billingPortal.sessions.create({
-      customer: subscription.stripeCustomerId,
-      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings/organization`,
-    });
-
-    return NextResponse.json({ success: true, data: { url: portalSession.url } });
-  } catch (error) {
-    console.error("[BILLING_PORTAL_ERROR]", error);
-    return NextResponse.json(
-      { success: false, message: "Something went wrong. Please try again." },
-      { status: 500 }
-    );
-  }
-}
+  const portalSession = await getStripe().billingPortal.sessions.create({
+    customer: subscription.stripeCustomerId,
+    return_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings/billing`,
+  });
+  return ok({ url: portalSession.url });
+});

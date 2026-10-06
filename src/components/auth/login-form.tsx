@@ -29,8 +29,8 @@ export function LoginForm() {
       const result = await signIn("credentials", { ...values, redirect: false });
       if (result?.error) {
         setServerError(
-          result.error === "EMAIL_NOT_VERIFIED"
-            ? "Please verify your email before signing in."
+          result.code === "rate_limited"
+            ? "Too many sign-in attempts. Wait 15 minutes and try again."
             : "Invalid email or password."
         );
         return;

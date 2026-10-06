@@ -1,21 +1,19 @@
-import { NextResponse } from "next/server";
+import { unauthorized } from "@/lib/api/errors";
+import { ok, route } from "@/lib/api/handler";
+import { pruneExpired } from "@/lib/api/rate-limit";
 import { resetDemoWorkspace } from "@/lib/demo-seed";
+import { logger } from "@/lib/logger";
 
 // Called daily by Vercel Cron (see vercel.json) so the public demo always has
-// fresh, current-dated data and any visitor's changes are undone.
+// fresh, current-dated data and any visitor's changes are undone. It also
+// clears out finished rate-limit windows.
 export const maxDuration = 60;
 
-export async function GET(req: Request) {
+export const GET = route("cron.reset_demo", async (req) => {
   const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
-    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  }
+  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) throw unauthorized();
 
-  try {
-    const result = await resetDemoWorkspace();
-    return NextResponse.json({ success: true, data: result });
-  } catch (error) {
-    console.error("[DEMO_RESET_ERROR]", error);
-    return NextResponse.json({ success: false, message: "Demo reset failed" }, { status: 500 });
-  }
-}
+  const [demo, pruned] = await Promise.all([resetDemoWorkspace(), pruneExpired()]);
+  logger.info("cron.reset_demo", { prunedRateLimits: pruned.count });
+  return ok({ ...demo, prunedRateLimits: pruned.count });
+});

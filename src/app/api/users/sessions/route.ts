@@ -1,18 +1,14 @@
-import { NextResponse } from "next/server";
-import { auth }         from "@/lib/auth";
-import { prisma }       from "@/lib/db/prisma";
+import { prisma } from "@/lib/db/prisma";
+import { ok, route } from "@/lib/api/handler";
+import { requireActor } from "@/lib/api/session";
 
-export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-
+export const GET = route("users.sessions", async () => {
+  const actor = await requireActor();
   const sessions = await prisma.activeSession.findMany({
-    where:   { userId: session.user.id, revoked: false },
+    where: { userId: actor.userId, revoked: false },
     orderBy: { lastSeenAt: "desc" },
+    select: { id: true, sessionId: true, deviceLabel: true, ipAddress: true, lastSeenAt: true, createdAt: true },
   });
-
-  return NextResponse.json({
-    success: true,
-    data: sessions.map(s => ({ ...s, isCurrent: s.sessionId === session.user.sessionId })),
-  });
-}
+  const current = actor.session.user.sessionId;
+  return ok(sessions.map(({ sessionId, ...s }) => ({ ...s, isCurrent: sessionId === current })));
+});

@@ -1,20 +1,5 @@
-import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/db/prisma";
+import { ok, route } from "@/lib/api/handler";
+import { requireActor } from "@/lib/api/session";
+import { listMembers } from "@/services/members";
 
-export async function GET() {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  }
-
-  const members = await prisma.membership.findMany({
-    where: { tenantId: session.user.tenantId },
-    orderBy: { joinedAt: "asc" },
-    include: {
-      user: { select: { id: true, name: true, email: true, image: true } },
-    },
-  });
-
-  return NextResponse.json({ success: true, data: members });
-}
+export const GET = route("members.list", async () => ok(await listMembers(await requireActor())));

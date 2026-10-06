@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
+import { ok, route } from "@/lib/api/handler";
+import { parseBody } from "@/lib/api/request";
+import { requireActor } from "@/lib/api/session";
 
 // Avatars are resized to 256×256 in the browser before upload, which keeps
 // them around 10–30 KB. That's small enough to live on the user row as a data
@@ -16,26 +17,15 @@ const avatarSchema = z.object({
     .regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/, "Unsupported image format."),
 });
 
-export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+export const POST = route("users.avatar.set", async (req) => {
+  const actor = await requireActor();
+  const { image } = await parseBody(req, avatarSchema);
+  await prisma.user.update({ where: { id: actor.userId }, data: { image } });
+  return ok({ updated: true });
+});
 
-  const parsed = avatarSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) {
-    return NextResponse.json(
-      { success: false, message: parsed.error.issues[0]?.message ?? "Invalid image." },
-      { status: 400 }
-    );
-  }
-
-  await prisma.user.update({ where: { id: session.user.id }, data: { image: parsed.data.image } });
-  return NextResponse.json({ success: true });
-}
-
-export async function DELETE() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-
-  await prisma.user.update({ where: { id: session.user.id }, data: { image: null } });
-  return NextResponse.json({ success: true });
-}
+export const DELETE = route("users.avatar.remove", async () => {
+  const actor = await requireActor();
+  await prisma.user.update({ where: { id: actor.userId }, data: { image: null } });
+  return ok({ removed: true });
+});

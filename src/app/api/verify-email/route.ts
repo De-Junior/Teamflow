@@ -1,37 +1,23 @@
-import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
+import { badRequest } from "@/lib/api/errors";
+import { ok, route } from "@/lib/api/handler";
+import { clientIp, enforce, limits } from "@/lib/api/rate-limit";
+import { parseBody } from "@/lib/api/request";
+import { findValidToken } from "@/services/auth-tokens";
 
-export async function POST(req: Request) {
-  try {
-    const { token } = await req.json();
+const verifySchema = z.object({ token: z.string().min(1, "Invalid verification link.").max(200) });
 
-    if (!token || typeof token !== "string") {
-      return NextResponse.json({ success: false, message: "Invalid verification link." }, { status: 400 });
-    }
+export const POST = route("auth.verify_email", async (req) => {
+  await enforce(`token:${clientIp(req)}`, limits.tokenRedemption);
+  const { token } = await parseBody(req, verifySchema);
 
-    const record = await prisma.verificationToken.findUnique({ where: { token } });
+  const valid = await findValidToken("verify-email", token);
+  if (!valid) throw badRequest("This verification link is invalid or has expired.");
 
-    if (!record || record.expires < new Date()) {
-      return NextResponse.json(
-        { success: false, message: "This verification link is invalid or has expired." },
-        { status: 400 }
-      );
-    }
-
-    await prisma.$transaction([
-      prisma.user.update({
-        where: { email: record.identifier },
-        data: { emailVerified: new Date() },
-      }),
-      prisma.verificationToken.delete({ where: { token } }),
-    ]);
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("[VERIFY_EMAIL_ERROR]", error);
-    return NextResponse.json(
-      { success: false, message: "Something went wrong. Please try again." },
-      { status: 500 }
-    );
-  }
-}
+  await prisma.$transaction([
+    prisma.user.update({ where: { email: valid.email }, data: { emailVerified: new Date() } }),
+    prisma.verificationToken.delete({ where: { token: valid.storedToken } }),
+  ]);
+  return ok({ verified: true });
+});

@@ -10,6 +10,7 @@ export type ErrorCode =
   | "forbidden"
   | "not_found"
   | "conflict"
+  | "gone"
   | "validation_failed"
   | "rate_limited"
   | "internal_error";

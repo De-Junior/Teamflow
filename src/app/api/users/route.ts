@@ -1,78 +1,59 @@
-import { NextResponse } from "next/server";
-import { auth }         from "@/lib/auth";
-import { blockOnDemo }  from "@/lib/api/demo-guard";
-import { prisma }       from "@/lib/db/prisma";
-import bcrypt           from "bcryptjs";
-import { z }            from "zod";
+import bcrypt from "bcryptjs";
+import { z } from "zod";
+import { prisma } from "@/lib/db/prisma";
+import { forbidOnDemo } from "@/lib/api/demo-guard";
+import { badRequest, validationFailed } from "@/lib/api/errors";
+import { ok, route } from "@/lib/api/handler";
+import { enforce, limits } from "@/lib/api/rate-limit";
+import { parseBody } from "@/lib/api/request";
+import { requireActor } from "@/lib/api/session";
+import { passwordSchema } from "@/validations/auth";
 
-const schema = z.object({
-  name:     z.string().min(2).max(100).optional(),
-  phone:    z.string().max(30).optional().nullable(),
+const profileSchema = z.object({
+  name: z.string().trim().min(2, "Name must be at least 2 characters.").max(100).optional(),
+  phone: z.string().trim().max(30).optional().nullable(),
   timezone: z.string().max(60).optional().nullable(),
   language: z.string().max(10).optional(),
-  bio:      z.string().max(500).optional().nullable(),
-  currentPassword: z.string().optional(),
-  newPassword: z.string()
-    .min(8, "Password must be at least 8 characters")
-    .regex(/[A-Z]/, "Must contain at least one uppercase letter")
-    .regex(/[0-9]/, "Must contain at least one number")
-    .optional(),
+  bio: z.string().max(500).optional().nullable(),
 });
 
-export async function PATCH(req: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1, "Enter your current password."),
+  newPassword: passwordSchema,
+});
 
-  try {
-    const body   = await req.json();
-    const parsed = schema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json({ success: false, message: parsed.error.issues[0]?.message ?? "Invalid input" }, { status: 400 });
-    }
-    const { currentPassword, newPassword, ...profileFields } = parsed.data;
+const updateSchema = z.union([passwordChangeSchema, profileSchema]);
 
-    // Password change branch
-    if (currentPassword !== undefined || newPassword !== undefined) {
-      const demoBlock = blockOnDemo(session);
-      if (demoBlock) return demoBlock;
-
-      if (!currentPassword || !newPassword) {
-        return NextResponse.json({ success: false, message: "Both current and new password are required." }, { status: 400 });
-      }
-      const dbUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { password: true } });
-      if (!dbUser?.password) return NextResponse.json({ success: false, message: "No password set on this account." }, { status: 400 });
-
-      const match = await bcrypt.compare(currentPassword, dbUser.password);
-      if (!match) return NextResponse.json({ success: false, message: "Current password is incorrect." }, { status: 400 });
-
-      const same = await bcrypt.compare(newPassword, dbUser.password);
-      if (same) return NextResponse.json({ success: false, message: "New password must be different." }, { status: 400 });
-
-      const hashed = await bcrypt.hash(newPassword, 12);
-      await prisma.user.update({ where: { id: session.user.id }, data: { password: hashed } });
-      return NextResponse.json({ success: true });
-    }
-
-    // Profile fields branch
-    if (Object.keys(profileFields).length > 0) {
-      await prisma.user.update({ where: { id: session.user.id }, data: profileFields });
-      return NextResponse.json({ success: true });
-    }
-
-    return NextResponse.json({ success: false, message: "Nothing to update." }, { status: 400 });
-  } catch (error) {
-    console.error("[USER_UPDATE_ERROR]", error);
-    return NextResponse.json({ success: false, message: "Something went wrong." }, { status: 500 });
-  }
-}
-
-export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-
+export const GET = route("users.me", async () => {
+  const actor = await requireActor();
   const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
+    where: { id: actor.userId },
     select: { name: true, email: true, phone: true, timezone: true, language: true, bio: true, image: true, createdAt: true },
   });
-  return NextResponse.json({ success: true, data: user });
-}
+  return ok(user);
+});
+
+export const PATCH = route("users.update", async (req) => {
+  const actor = await requireActor();
+  const input = await parseBody(req, updateSchema);
+
+  if ("newPassword" in input) {
+    forbidOnDemo(actor);
+    await enforce(`password-change:${actor.userId}`, limits.signIn);
+
+    const user = await prisma.user.findUnique({ where: { id: actor.userId }, select: { password: true } });
+    if (!user?.password) throw badRequest("This account signs in with Google and has no password to change.");
+    if (!(await bcrypt.compare(input.currentPassword, user.password))) {
+      throw validationFailed({ currentPassword: "Current password is incorrect." });
+    }
+    if (await bcrypt.compare(input.newPassword, user.password)) {
+      throw validationFailed({ newPassword: "Choose a password you haven't used here before." });
+    }
+    await prisma.user.update({ where: { id: actor.userId }, data: { password: await bcrypt.hash(input.newPassword, 12) } });
+    return ok({ passwordChanged: true });
+  }
+
+  if (Object.keys(input).length === 0) throw badRequest("Nothing to update.");
+  await prisma.user.update({ where: { id: actor.userId }, data: input });
+  return ok(input);
+});

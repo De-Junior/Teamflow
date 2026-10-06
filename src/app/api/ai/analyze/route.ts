@@ -1,48 +1,36 @@
-import { NextRequest, NextResponse } from "next/server";
-import { Role } from "@prisma/client";
-import { auth } from "@/lib/auth";
-import { hasPermission } from "@/lib/auth/permissions";
+import { z } from "zod";
+import { ApiError } from "@/lib/api/errors";
+import { ok, route } from "@/lib/api/handler";
+import { enforce, limits } from "@/lib/api/rate-limit";
+import { parseBody } from "@/lib/api/request";
+import { requirePermission } from "@/lib/api/session";
 import { getAnalyticsData } from "@/lib/analytics/get-analytics-data";
-import { resolveDateRange, type RangeKey } from "@/lib/analytics/date-range";
-import { runAIAnalysis, type AIFeature } from "@/lib/ai/analyze";
+import { resolveDateRange } from "@/lib/analytics/date-range";
+import { runAIAnalysis } from "@/lib/ai/analyze";
+import { logger } from "@/lib/logger";
 
-const VALID_FEATURES: AIFeature[] = ["insights", "risk", "delayedTasks", "suggestedSprint"];
+const analyzeSchema = z.object({
+  feature: z.enum(["insights", "risk", "delayedTasks", "suggestedSprint"], { message: "Unknown analysis." }),
+  range: z.enum(["7d", "30d", "quarter", "year"]).default("7d"),
+});
 
-export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  }
+/**
+ * AI calls cost money per request, so they're limited to roles that can see
+ * analytics and capped per organization.
+ */
+export const POST = route("ai.analyze", async (req) => {
+  const actor = await requirePermission("analytics:view");
+  const { feature, range } = await parseBody(req, analyzeSchema);
+  await enforce(`ai:${actor.tenant.organizationId}`, limits.aiAnalysis);
 
-  // AI calls are billed per request, so they're limited to roles that can see analytics.
-  if (!hasPermission(session.user.role as Role, "analytics:view")) {
-    return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
-  }
-
-  const body = (await req.json().catch(() => null)) as { feature?: AIFeature; range?: string } | null;
-  const feature = body?.feature;
-  const range = body?.range;
-
-  if (!feature || !VALID_FEATURES.includes(feature)) {
-    return NextResponse.json({ success: false, message: "Unknown feature" }, { status: 400 });
-  }
-
-  const tenantId = session.user.tenantId;
-  const { from, to } = resolveDateRange((range as RangeKey) ?? "7d");
-
-  let data;
-  try {
-    data = await getAnalyticsData(tenantId, from, to);
-  } catch (error) {
-    console.error("[AI_ANALYZE_DB_ERROR]", error);
-    return NextResponse.json({ success: false, message: "Could not load analytics data" }, { status: 500 });
-  }
+  const { from, to } = resolveDateRange(range);
+  const data = await getAnalyticsData(actor.tenant.tenantId, from, to);
 
   try {
-    const result = await runAIAnalysis(feature, data);
-    return NextResponse.json({ success: true, data: result });
+    return ok(await runAIAnalysis(feature, data));
   } catch (error) {
-    console.error("[AI_ANALYZE_ERROR]", error);
-    return NextResponse.json({ success: false, message: "AI analysis failed" }, { status: 500 });
+    // The model is an external dependency; report it as unavailable, not as our bug.
+    logger.error("ai.analysis_failed", { feature, error });
+    throw new ApiError(502, "internal_error", "The AI service didn't respond. Try again in a minute.");
   }
-}
+});

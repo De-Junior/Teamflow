@@ -1,21 +1,12 @@
-import { NextResponse } from "next/server";
-import { auth }         from "@/lib/auth";
-import { prisma }       from "@/lib/db/prisma";
+import { prisma } from "@/lib/db/prisma";
+import { ok, route } from "@/lib/api/handler";
+import { requireActor } from "@/lib/api/session";
 
-export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-
+export const GET = route("users.connected_accounts", async () => {
+  const actor = await requireActor();
   const [accounts, user] = await Promise.all([
-    prisma.account.findMany({
-      where:  { userId: session.user.id },
-      select: { id: true, provider: true, providerAccountId: true },
-    }),
-    prisma.user.findUnique({ where: { id: session.user.id }, select: { password: true } }),
+    prisma.account.findMany({ where: { userId: actor.userId }, select: { id: true, provider: true, providerAccountId: true } }),
+    prisma.user.findUnique({ where: { id: actor.userId }, select: { password: true } }),
   ]);
-
-  return NextResponse.json({
-    success: true,
-    data: { accounts, hasPassword: !!user?.password },
-  });
-}
+  return ok({ accounts, hasPassword: Boolean(user?.password) });
+});

@@ -14,6 +14,7 @@ export type Limit = { limit: number; windowSeconds: number };
 
 export const limits = {
   signIn: { limit: 10, windowSeconds: 15 * 60 },
+  signInPerIp: { limit: 50, windowSeconds: 15 * 60 },
   register: { limit: 5, windowSeconds: 60 * 60 },
   passwordResetRequest: { limit: 5, windowSeconds: 15 * 60 },
   passwordResetPerEmail: { limit: 3, windowSeconds: 60 * 60 },

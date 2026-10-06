@@ -1,9 +1,16 @@
-import type { NextAuthConfig } from "next-auth";
+import { CredentialsSignin, type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db/prisma";
 import { loginSchema } from "@/validations/auth";
+import { clientIp, hit, limits } from "@/lib/api/rate-limit";
+import { ensureOrganization } from "./ensure-organization";
+
+/** Surfaces to the login form as `result.code === "rate_limited"`. */
+class TooManyAttempts extends CredentialsSignin {
+  code = "rate_limited";
+}
 
 export const authConfig: NextAuthConfig = {
   trustHost: true,
@@ -23,11 +30,20 @@ export const authConfig: NextAuthConfig = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) return null;
 
         const { email, password } = parsed.data;
+
+        // Slow down password guessing: per account from one address, plus a
+        // looser cap per address across all accounts.
+        const ip = clientIp(request);
+        const [perAccount, perIp] = await Promise.all([
+          hit(`sign-in:${ip}:${email}`, limits.signIn),
+          hit(`sign-in:${ip}`, limits.signInPerIp),
+        ]);
+        if (!perAccount.allowed || !perIp.allowed) throw new TooManyAttempts();
 
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user || !user.password) return null;
@@ -72,12 +88,21 @@ export const authConfig: NextAuthConfig = {
             orderBy: { joinedAt: "asc" },
           }));
 
-        if (membership) {
-          token.organizationId = membership.organizationId;
-          token.tenantId = membership.organizationId;
-          token.role = membership.role;
-          token.organizationSlug = membership.organization.slug;
-        }
+        // A first-time Google sign-in has no organization yet; give them a
+        // personal one so the session is usable (without it every page
+        // redirected back to /login).
+        const workspace = membership
+          ? {
+              organizationId: membership.organizationId,
+              role: membership.role,
+              organizationSlug: membership.organization.slug,
+            }
+          : await ensureOrganization(user.id as string, user.name ?? null);
+
+        token.organizationId = workspace.organizationId;
+        token.tenantId = workspace.organizationId;
+        token.role = workspace.role;
+        token.organizationSlug = workspace.organizationSlug;
 
         // Active session tracking — only in Node runtime (not Edge middleware)
         if (typeof (globalThis as { EdgeRuntime?: unknown }).EdgeRuntime === "undefined") {
