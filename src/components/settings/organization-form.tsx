@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { api, errorMessage } from "@/lib/api-client";
 
 export function OrganizationForm({
   initialName,
@@ -17,27 +19,19 @@ export function OrganizationForm({
   const [name, setName] = useState(initialName);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) { setError("Name is required."); return; }
     setError(null);
-    setSuccess(false);
     setIsSubmitting(true);
 
     try {
-      const res = await fetch("/api/organizations", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() }),
-      });
-      const json = await res.json();
-      if (!json.success) { setError(json.message); return; }
-      setSuccess(true);
+      await api.patch("/api/organizations", { name: name.trim() });
+      toast.success("Organization name updated.");
       router.refresh();
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -50,7 +44,7 @@ export function OrganizationForm({
         <Input
           id="org-name"
           value={name}
-          onChange={(e) => { setName(e.target.value); setSuccess(false); }}
+          onChange={(e) => setName(e.target.value)}
           disabled={!canEdit || isSubmitting}
           maxLength={100}
         />
@@ -62,12 +56,7 @@ export function OrganizationForm({
       </div>
 
       {error && (
-        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
-      )}
-      {success && (
-        <p className="rounded-md bg-green-500/10 px-3 py-2 text-sm text-green-600">
-          Organization name updated.
-        </p>
+        <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
       )}
 
       {canEdit && (

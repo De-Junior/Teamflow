@@ -1,15 +1,14 @@
-import { NextResponse } from "next/server";
-import { auth }         from "@/lib/auth";
-import { prisma }       from "@/lib/db/prisma";
+import { prisma } from "@/lib/db/prisma";
+import { ok, route } from "@/lib/api/handler";
+import { requireActor } from "@/lib/api/session";
 
-export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-
+export const GET = route("users.activity", async () => {
+  const actor = await requireActor();
   const logs = await prisma.auditLog.findMany({
-    where:   { tenantId: session.user.tenantId, userId: session.user.id },
+    where: { tenantId: actor.tenant.tenantId, userId: actor.userId },
     orderBy: { createdAt: "desc" },
-    take:    15,
+    take: 15,
+    select: { id: true, action: true, entityType: true, entityId: true, metadata: true, createdAt: true },
   });
-  return NextResponse.json({ success: true, data: logs });
-}
+  return ok(logs);
+});

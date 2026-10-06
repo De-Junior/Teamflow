@@ -1,6 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { api, errorMessage, fieldError } from "@/lib/api-client";
+import { useQuery } from "@tanstack/react-query";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createTaskSchema, type CreateTaskFormInput } from "@/validations/project";
@@ -42,66 +45,39 @@ export function CreateTaskDialog({
   const [open, setOpen] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [members, setMembers] = useState<TeamMember[]>([]);
-  const [membersFetched, setMembersFetched] = useState(false);
-  const loadingMembers = open && !membersFetched;
+  // Loaded the first time the dialog opens, then shared across every column's dialog.
+  const { data: members = [], isPending: loadingMembers } = useQuery({
+    queryKey: ["members"],
+    queryFn: () => api.get<TeamMember[]>("/api/members"),
+    enabled: open,
+  });
 
   const {
     register,
     handleSubmit,
     control,
     reset,
+    setError,
     formState: { errors },
   } = useForm<CreateTaskFormInput>({
     resolver: zodResolver(createTaskSchema),
     defaultValues: { priority: "MEDIUM", status: defaultStatus as never, projectId },
   });
 
-  // Fetch team members each time the dialog opens
-  useEffect(() => {
-    if (!open) return;
-
-    let cancelled = false;
-
-    fetch("/api/members")
-      .then((res) => res.json())
-      .then((json) => {
-        if (!cancelled && json.success) setMembers(json.data);
-      })
-      .catch(() => {
-        if (!cancelled) setServerError("Couldn't load team members.");
-      })
-      .finally(() => {
-        if (!cancelled) setMembersFetched(true);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
-
   async function onSubmit(values: CreateTaskFormInput) {
     setServerError(null);
     setIsSubmitting(true);
 
     try {
-      const res = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...values, projectId, status: defaultStatus }),
-      });
-      const json = await res.json();
-
-      if (!json.success) {
-        setServerError(json.message);
-        return;
-      }
-
+      await api.post("/api/tasks", { ...values, projectId, status: defaultStatus });
       setOpen(false);
       reset();
+      toast.success("Task created.");
       onCreated();
-    } catch {
-      setServerError("Something went wrong. Please try again.");
+    } catch (err) {
+      const titleError = fieldError(err, "title");
+      if (titleError) setError("title", { message: titleError });
+      else setServerError(errorMessage(err));
     } finally {
       setIsSubmitting(false);
     }

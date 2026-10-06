@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle2, ExternalLink } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { api, errorMessage } from "@/lib/api-client";
 
 export type MyTask = {
   id: string;
@@ -24,15 +26,12 @@ export function MyTasksWidget({ tasks }: { tasks: MyTask[] }) {
   async function handleComplete(taskId: string) {
     setCompletingId(taskId);
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "DONE" }),
-      });
-      if (res.ok) {
-        setCompleted((prev) => new Set(prev).add(taskId));
-        router.refresh();
-      }
+      await api.patch(`/api/tasks/${taskId}`, { status: "DONE" });
+      setCompleted((prev) => new Set(prev).add(taskId));
+      toast.success("Task completed.");
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
     } finally {
       setCompletingId(null);
     }
@@ -67,7 +66,7 @@ export function MyTasksWidget({ tasks }: { tasks: MyTask[] }) {
                       )}
                     >
                       {task.isOverdue ? "Overdue" : "Due"}{" "}
-                      {new Date(task.dueDate).toLocaleDateString(undefined, {
+                      {new Date(task.dueDate).toLocaleDateString("en-GB", { timeZone: "UTC",
                         month: "short",
                         day: "numeric",
                       })}
@@ -80,13 +79,15 @@ export function MyTasksWidget({ tasks }: { tasks: MyTask[] }) {
                   onClick={() => handleComplete(task.id)}
                   disabled={completingId === task.id}
                   title="Mark complete"
+                  aria-label={`Mark "${task.title}" complete`}
                   className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                 >
                   <CheckCircle2 className="size-4" />
                 </button>
                 <Link
                   href={`/projects/${task.projectId}`}
-                  title="Open"
+                  title="Open project"
+                  aria-label={`Open ${task.projectName}`}
                   className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                 >
                   <ExternalLink className="size-4" />

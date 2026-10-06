@@ -1,20 +1,17 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { canModerate, jsonError, requireTaskAccess } from "@/lib/api/task-access";
+import { forbidden, notFound } from "@/lib/api/errors";
+import { ok, route } from "@/lib/api/handler";
+import { canModerate, requireTaskAccess } from "@/lib/api/task-access";
 
-type P = { params: Promise<{ id: string; entryId: string }> };
+type Params = { id: string; entryId: string };
 
-export async function DELETE(_req: Request, { params }: P) {
-  const { id, entryId } = await params;
-  const access = await requireTaskAccess(id);
-  if (!access.ok) return access.response;
+export const DELETE = route<Params>("time.delete", async (_req, { params }) => {
+  const { actor, taskId } = await requireTaskAccess(params.id);
 
-  const entry = await prisma.timeEntry.findFirst({ where: { id: entryId, taskId: access.taskId } });
-  if (!entry) return jsonError("Time entry not found.", 404);
-
-  const { user } = access.session;
-  if (!canModerate(user.role) && entry.userId !== user.id) return jsonError("Forbidden.", 403);
+  const entry = await prisma.timeEntry.findFirst({ where: { id: params.entryId, taskId }, select: { id: true, userId: true } });
+  if (!entry) throw notFound("Time entry");
+  if (!canModerate(actor.role) && entry.userId !== actor.userId) throw forbidden("You can only delete your own time entries.");
 
   await prisma.timeEntry.delete({ where: { id: entry.id } });
-  return NextResponse.json({ success: true });
-}
+  return ok({ id: entry.id });
+});

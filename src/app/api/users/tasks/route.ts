@@ -1,24 +1,27 @@
-import { NextResponse } from "next/server";
-import { auth }         from "@/lib/auth";
-import { prisma }       from "@/lib/db/prisma";
+import { prisma } from "@/lib/db/prisma";
+import { ok, route } from "@/lib/api/handler";
+import { requireActor } from "@/lib/api/session";
 
-export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-
-  const userId   = session.user.id;
-  const tenantId = session.user.tenantId;
-  const now      = new Date();
-
+export const GET = route("users.tasks", async () => {
+  const actor = await requireActor();
+  const now = new Date();
   const tasks = await prisma.task.findMany({
-    where: { tenantId, assigneeId: userId },
+    where: { tenantId: actor.tenant.tenantId, assigneeId: actor.userId },
     orderBy: { dueDate: "asc" },
-    include: { project: { select: { id: true, name: true } } },
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      priority: true,
+      dueDate: true,
+      completedAt: true,
+      project: { select: { id: true, name: true } },
+    },
   });
 
-  const upcoming  = tasks.filter(t => t.status !== "DONE" && (!t.dueDate || t.dueDate >= now));
-  const completed = tasks.filter(t => t.status === "DONE");
-  const overdue   = tasks.filter(t => t.status !== "DONE" && t.dueDate && t.dueDate < now);
-
-  return NextResponse.json({ success: true, data: { upcoming, completed, overdue } });
-}
+  return ok({
+    upcoming: tasks.filter((t) => t.status !== "DONE" && (!t.dueDate || t.dueDate >= now)),
+    overdue: tasks.filter((t) => t.status !== "DONE" && t.dueDate && t.dueDate < now),
+    completed: tasks.filter((t) => t.status === "DONE"),
+  });
+});

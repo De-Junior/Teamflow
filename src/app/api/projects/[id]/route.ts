@@ -1,138 +1,23 @@
-import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { projectRepository, writeAuditLog } from "@/lib/db/tenant";
-import { requirePermission, UnauthorizedError } from "@/lib/auth/permissions";
+import { ok, route } from "@/lib/api/handler";
+import { parseBody, parseId } from "@/lib/api/request";
+import { requireActor } from "@/lib/api/session";
+import { deleteProject, getProject, updateProject } from "@/services/projects";
 import { updateProjectSchema } from "@/validations/project";
-import { Role } from "@prisma/client";
 
-type RouteParams = { params: Promise<{ id: string }> };
+type Params = { id: string };
 
-export async function GET(_req: Request, { params }: RouteParams) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  }
+export const GET = route<Params>("projects.get", async (_req, { params }) => {
+  const actor = await requireActor();
+  return ok(await getProject(actor, parseId(params.id)));
+});
 
-  const { id } = await params;
-  const ctx = {
-    tenantId: session.user.tenantId,
-    organizationId: session.user.organizationId,
-    userId: session.user.id,
-  };
+export const PATCH = route<Params>("projects.update", async (req, { params }) => {
+  const actor = await requireActor();
+  const input = await parseBody(req, updateProjectSchema);
+  return ok(await updateProject(actor, parseId(params.id), input));
+});
 
-  const project = await projectRepository(ctx).findById(id, {
-    include: {
-      tasks: {
-        orderBy: { position: "asc" },
-        include: {
-          assignee: { select: { id: true, name: true, image: true } },
-        },
-      },
-    },
-  });
-
-  if (!project) {
-    return NextResponse.json({ success: false, message: "Project not found" }, { status: 404 });
-  }
-
-  return NextResponse.json({ success: true, data: project });
-}
-
-export async function PATCH(req: Request, { params }: RouteParams) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  }
-
-  try {
-    requirePermission(session.user.role as Role, "project:update");
-  } catch (error) {
-    if (error instanceof UnauthorizedError) {
-      return NextResponse.json({ success: false, message: error.message }, { status: 403 });
-    }
-    throw error;
-  }
-
-  const { id } = await params;
-  const ctx = {
-    tenantId: session.user.tenantId,
-    organizationId: session.user.organizationId,
-    userId: session.user.id,
-  };
-
-  try {
-    const body = await req.json();
-    const parsed = updateProjectSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return NextResponse.json(
-        { success: false, message: parsed.error.issues[0]?.message ?? "Invalid input" },
-        { status: 400 }
-      );
-    }
-
-    const { startDate, dueDate, ...rest } = parsed.data;
-
-    const result = await projectRepository(ctx).update(id, {
-      ...rest,
-      ...(startDate !== undefined && { startDate: startDate ? new Date(startDate) : null }),
-      ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
-    });
-
-    if (result.count === 0) {
-      return NextResponse.json({ success: false, message: "Project not found" }, { status: 404 });
-    }
-
-    await writeAuditLog(ctx, {
-      action: "UPDATED",
-      entityType: "Project",
-      entityId: id,
-      metadata: rest,
-    });
-
-    return NextResponse.json({ success: true, data: { id } });
-  } catch (error) {
-    console.error("[PROJECT_UPDATE_ERROR]", error);
-    return NextResponse.json(
-      { success: false, message: "Something went wrong. Please try again." },
-      { status: 500 }
-    );
-  }
-}
-
-export async function DELETE(_req: Request, { params }: RouteParams) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  }
-
-  try {
-    requirePermission(session.user.role as Role, "project:delete");
-  } catch (error) {
-    if (error instanceof UnauthorizedError) {
-      return NextResponse.json({ success: false, message: error.message }, { status: 403 });
-    }
-    throw error;
-  }
-
-  const { id } = await params;
-  const ctx = {
-    tenantId: session.user.tenantId,
-    organizationId: session.user.organizationId,
-    userId: session.user.id,
-  };
-
-  const result = await projectRepository(ctx).delete(id);
-
-  if (result.count === 0) {
-    return NextResponse.json({ success: false, message: "Project not found" }, { status: 404 });
-  }
-
-  await writeAuditLog(ctx, {
-    action: "DELETED",
-    entityType: "Project",
-    entityId: id,
-  });
-
-  return NextResponse.json({ success: true, data: { id } });
-}
+export const DELETE = route<Params>("projects.delete", async (_req, { params }) => {
+  const actor = await requireActor();
+  return ok(await deleteProject(actor, parseId(params.id)));
+});

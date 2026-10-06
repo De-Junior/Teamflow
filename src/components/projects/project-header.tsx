@@ -29,11 +29,11 @@ export function ProjectHeader({ project, taskCount, doneCount, overdueCount, mem
   const isOverdue = project.dueDate && new Date(project.dueDate) < new Date() && project.status !== "COMPLETED";
 
   return (
-    <div className="rounded-lg border border-border bg-card p-5">
-      <div className="flex items-start justify-between gap-4">
+    <div className="rounded-lg border border-border bg-card p-4 sm:p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn("size-2 rounded-full", PRIORITY_DOT[project.priority])} />
+            <span aria-hidden className={cn("size-2 rounded-full", PRIORITY_DOT[project.priority])} />
             <h1 className="text-xl font-semibold text-foreground">{project.name}</h1>
             <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", STATUS_STYLES[project.status])}>
               {STATUS_LABEL[project.status] ?? project.status}
@@ -44,8 +44,8 @@ export function ProjectHeader({ project, taskCount, doneCount, overdueCount, mem
           )}
 
           {/* Progress */}
-          <div className="mt-3 flex items-center gap-3">
-            <div className="h-2 w-48 overflow-hidden rounded-full bg-muted">
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <div role="progressbar" aria-label="Project progress" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} className="h-2 w-full overflow-hidden rounded-full bg-muted sm:w-48">
               <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
             </div>
             <span className="text-xs text-muted-foreground">{progress}% · {doneCount}/{taskCount} tasks</span>
@@ -55,7 +55,7 @@ export function ProjectHeader({ project, taskCount, doneCount, overdueCount, mem
           </div>
         </div>
 
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex flex-row-reverse items-center justify-between gap-2 sm:flex-col sm:items-end">
           {/* Member avatars */}
           {members.length > 0 && (
             <div className="flex -space-x-2">
@@ -81,7 +81,7 @@ export function ProjectHeader({ project, taskCount, doneCount, overdueCount, mem
           {project.dueDate && (
             <span className={cn("flex items-center gap-1 text-xs", isOverdue ? "text-destructive" : "text-muted-foreground")}>
               <Calendar className="size-3" />
-              Due {new Date(project.dueDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+              Due {new Date(project.dueDate).toLocaleDateString("en-GB", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" })}
             </span>
           )}
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { api, errorMessage } from "@/lib/api-client";
 
 type AIFeature = "insights" | "risk" | "delayedTasks" | "suggestedSprint";
 
@@ -35,16 +36,10 @@ export function AIInsightsPanel({ range }: { range: string }) {
 
     setLoading(feature);
     try {
-      const res = await fetch("/api/ai/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ feature, range }),
-      });
-      const json = await res.json();
-      if (!json.success) throw new Error(json.message ?? "AI analysis failed");
-      setResults((prev) => ({ ...prev, [feature]: json.data }));
+      const data = await api.post<unknown>("/api/ai/analyze", { feature, range });
+      setResults((prev) => ({ ...prev, [feature]: data }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(errorMessage(err));
     } finally {
       setLoading(null);
     }

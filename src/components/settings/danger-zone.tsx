@@ -2,9 +2,23 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import * as Dialog from "@radix-ui/react-dialog";
+import { signOut, useSession } from "next-auth/react";
+import { AlertTriangle, ArrowRightLeft, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertTriangle, Archive, ArrowRightLeft, Trash2, X } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { api, errorMessage } from "@/lib/api-client";
 
 interface Member {
   membershipId: string;
@@ -23,12 +37,11 @@ export function DangerZone({
     <Card className="border-destructive/30">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base text-destructive">
-          <AlertTriangle className="size-4" />
-          Danger Zone
+          <AlertTriangle aria-hidden className="size-4" />
+          Danger zone
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col divide-y divide-border">
-        <ArchiveOrgRow organizationName={organizationName} />
         <TransferOwnershipRow organizationName={organizationName} otherMembers={otherMembers} />
         <DeleteOrgRow organizationName={organizationName} />
       </CardContent>
@@ -40,159 +53,29 @@ function Row({
   icon: Icon,
   title,
   description,
-  actionLabel,
-  actionVariant = "default",
-  onAction,
-  disabled,
-  disabledReason,
+  note,
+  action,
 }: {
-  icon: typeof Archive;
+  icon: typeof Trash2;
   title: string;
   description: string;
-  actionLabel: string;
-  actionVariant?: "default" | "destructive";
-  onAction: () => void;
-  disabled?: boolean;
-  disabledReason?: string;
+  note?: string;
+  action: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0">
+    <div className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <div className="flex gap-3">
-        <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <div>
           <p className="text-sm font-medium text-foreground">{title}</p>
           <p className="text-xs text-muted-foreground">{description}</p>
-          {disabled && disabledReason && (
-            <p className="mt-1 text-xs text-amber-600">{disabledReason}</p>
-          )}
+          {note && <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{note}</p>}
         </div>
       </div>
-      <button
-        onClick={onAction}
-        disabled={disabled}
-        className={`shrink-0 rounded-md border px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-          actionVariant === "destructive"
-            ? "border-destructive/30 text-destructive hover:bg-destructive/10"
-            : "border-border text-foreground hover:bg-muted"
-        }`}
-      >
-        {actionLabel}
-      </button>
+      <div className="shrink-0 pl-7 sm:pl-0">{action}</div>
     </div>
   );
 }
-
-function ConfirmDialog({
-  open,
-  onOpenChange,
-  title,
-  description,
-  children,
-  confirmLabel,
-  confirmDisabled,
-  onConfirm,
-  loading,
-  error,
-  variant = "default",
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  title: string;
-  description: string;
-  children?: React.ReactNode;
-  confirmLabel: string;
-  confirmDisabled?: boolean;
-  onConfirm: () => void;
-  loading: boolean;
-  error: string | null;
-  variant?: "default" | "destructive";
-}) {
-  return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-card p-5 shadow-lg">
-          <div className="mb-3 flex items-start justify-between">
-            <Dialog.Title className="text-sm font-semibold text-foreground">{title}</Dialog.Title>
-            <Dialog.Close className="text-muted-foreground hover:text-foreground">
-              <X className="size-4" />
-            </Dialog.Close>
-          </div>
-          <Dialog.Description className="mb-4 text-sm text-muted-foreground">
-            {description}
-          </Dialog.Description>
-
-          {children}
-
-          {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
-
-          <div className="mt-5 flex justify-end gap-2">
-            <Dialog.Close className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted">
-              Cancel
-            </Dialog.Close>
-            <button
-              onClick={onConfirm}
-              disabled={confirmDisabled || loading}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 ${
-                variant === "destructive" ? "bg-destructive hover:bg-destructive/90" : "bg-primary hover:bg-primary/90"
-              }`}
-            >
-              {loading ? "Working..." : confirmLabel}
-            </button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
-}
-
-// ---------- Archive ----------
-
-function ArchiveOrgRow({ organizationName }: { organizationName: string }) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleArchive() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/organizations/archive", { method: "POST" });
-      const json = await res.json();
-      if (!json.success) throw new Error(json.message ?? "Failed to archive organization");
-      router.push("/login");
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-      setLoading(false);
-    }
-  }
-
-  return (
-    <>
-      <Row
-        icon={Archive}
-        title="Archive organization"
-        description="Hides the organization and pauses billing. Can be restored later by contacting support."
-        actionLabel="Archive"
-        onAction={() => setOpen(true)}
-      />
-      <ConfirmDialog
-        open={open}
-        onOpenChange={setOpen}
-        title="Archive this organization?"
-        description={`"${organizationName}" will become inaccessible to all members until it's restored. This does not delete your data.`}
-        confirmLabel="Archive organization"
-        onConfirm={handleArchive}
-        loading={loading}
-        error={error}
-      />
-    </>
-  );
-}
-
-// ---------- Transfer ownership ----------
 
 function TransferOwnershipRow({
   organizationName,
@@ -202,6 +85,7 @@ function TransferOwnershipRow({
   otherMembers: Member[];
 }) {
   const router = useRouter();
+  const { update } = useSession();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState("");
   const [loading, setLoading] = useState(false);
@@ -211,17 +95,15 @@ function TransferOwnershipRow({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/organizations/transfer-ownership", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ membershipId: selected }),
-      });
-      const json = await res.json();
-      if (!json.success) throw new Error(json.message ?? "Failed to transfer ownership");
+      await api.post("/api/organizations/transfer-ownership", { membershipId: selected });
+      // The server made the previous owner a Manager; refresh the session to match.
+      await update({ role: "MANAGER" });
       setOpen(false);
+      toast.success("Ownership transferred.");
+      router.push("/settings");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -230,51 +112,65 @@ function TransferOwnershipRow({
   const noMembers = otherMembers.length === 0;
 
   return (
-    <>
-      <Row
-        icon={ArrowRightLeft}
-        title="Transfer ownership"
-        description="Make another member the owner of this organization. You'll keep your current role."
-        actionLabel="Transfer"
-        onAction={() => setOpen(true)}
-        disabled={noMembers}
-        disabledReason={noMembers ? "Invite another member before transferring ownership." : undefined}
-      />
-      <ConfirmDialog
-        open={open}
-        onOpenChange={(o) => {
-          setOpen(o);
-          if (!o) setSelected("");
-        }}
-        title="Transfer organization ownership"
-        description={`Choose who should become the new owner of "${organizationName}".`}
-        confirmLabel="Transfer ownership"
-        confirmDisabled={!selected}
-        onConfirm={handleTransfer}
-        loading={loading}
-        error={error}
-      >
-        <select
-          value={selected}
-          onChange={(e) => setSelected(e.target.value)}
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+    <Row
+      icon={ArrowRightLeft}
+      title="Transfer ownership"
+      description="Make another member the owner. You'll become a Manager."
+      note={noMembers ? "Invite another member before transferring ownership." : undefined}
+      action={
+        <Dialog
+          open={open}
+          onOpenChange={(o) => {
+            setOpen(o);
+            if (!o) {
+              setSelected("");
+              setError(null);
+            }
+          }}
         >
-          <option value="">Select a member…</option>
-          {otherMembers.map((m) => (
-            <option key={m.membershipId} value={m.membershipId}>
-              {m.name ?? m.email} ({m.email})
-            </option>
-          ))}
-        </select>
-      </ConfirmDialog>
-    </>
+          <Button variant="outline" size="sm" disabled={noMembers} onClick={() => setOpen(true)}>
+            Transfer
+          </Button>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Transfer ownership</DialogTitle>
+              <DialogDescription>
+                Choose who should own &ldquo;{organizationName}&rdquo;. They&apos;ll control billing and can delete the
+                organization. You&apos;ll stay on as a Manager.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="new-owner">New owner</Label>
+              <Select value={selected} onValueChange={setSelected}>
+                <SelectTrigger id="new-owner">
+                  <SelectValue placeholder="Select a member" />
+                </SelectTrigger>
+                <SelectContent>
+                  {otherMembers.map((m) => (
+                    <SelectItem key={m.membershipId} value={m.membershipId}>
+                      {m.name ? `${m.name} (${m.email})` : m.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button disabled={!selected || loading} onClick={() => void handleTransfer()}>
+                {loading ? "Transferring…" : "Transfer ownership"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      }
+    />
   );
 }
 
-// ---------- Delete ----------
-
 function DeleteOrgRow({ organizationName }: { organizationName: string }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -284,52 +180,74 @@ function DeleteOrgRow({ organizationName }: { organizationName: string }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/organizations/delete", { method: "DELETE" });
-      const json = await res.json();
-      if (!json.success) throw new Error(json.message ?? "Failed to delete organization");
-      router.push("/login");
-      router.refresh();
+      await api.delete("/api/organizations/delete");
+      // The session still points at the deleted organization, so start a fresh one.
+      await signOut({ callbackUrl: "/login" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(errorMessage(err));
       setLoading(false);
     }
   }
 
   return (
-    <>
-      <Row
-        icon={Trash2}
-        title="Delete organization"
-        description="Permanently deletes this organization, all projects, tasks, and members. This cannot be undone."
-        actionLabel="Delete"
-        actionVariant="destructive"
-        onAction={() => setOpen(true)}
-      />
-      <ConfirmDialog
-        open={open}
-        onOpenChange={(o) => {
-          setOpen(o);
-          if (!o) setConfirmText("");
-        }}
-        title="Delete this organization?"
-        description={`This will permanently delete "${organizationName}" and everything in it — projects, tasks, members, billing history. There is no undo.`}
-        confirmLabel="Delete forever"
-        confirmDisabled={confirmText !== organizationName}
-        onConfirm={handleDelete}
-        loading={loading}
-        error={error}
-        variant="destructive"
-      >
-        <label className="text-xs text-muted-foreground">
-          Type <span className="font-medium text-foreground">{organizationName}</span> to confirm
-        </label>
-        <input
-          value={confirmText}
-          onChange={(e) => setConfirmText(e.target.value)}
-          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-          placeholder={organizationName}
-        />
-      </ConfirmDialog>
-    </>
+    <Row
+      icon={Trash2}
+      title="Delete organization"
+      description="Permanently deletes this organization with all its projects, tasks and members."
+      action={
+        <Dialog
+          open={open}
+          onOpenChange={(o) => {
+            setOpen(o);
+            if (!o) {
+              setConfirmText("");
+              setError(null);
+            }
+          }}
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-destructive/30 text-destructive hover:bg-destructive/10"
+            onClick={() => setOpen(true)}
+          >
+            Delete
+          </Button>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete this organization?</DialogTitle>
+              <DialogDescription>
+                &ldquo;{organizationName}&rdquo; and everything in it (projects, tasks, members and billing history) will be
+                deleted for good. This can&apos;t be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="confirm-org-name">
+                Type <span className="font-semibold">{organizationName}</span> to confirm
+              </Label>
+              <Input
+                id="confirm-org-name"
+                autoComplete="off"
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+              />
+            </div>
+            {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={confirmText !== organizationName || loading}
+                onClick={() => void handleDelete()}
+              >
+                {loading ? "Deleting…" : "Delete forever"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      }
+    />
   );
 }

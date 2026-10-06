@@ -1,31 +1,25 @@
-import { NextResponse } from "next/server";
-import { auth }         from "@/lib/auth";
-import { blockOnDemo } from "@/lib/api/demo-guard";
-import { prisma }       from "@/lib/db/prisma";
+import { prisma } from "@/lib/db/prisma";
+import { forbidOnDemo } from "@/lib/api/demo-guard";
+import { conflict, notFound } from "@/lib/api/errors";
+import { ok, route } from "@/lib/api/handler";
+import { requireActor } from "@/lib/api/session";
 
-type P = { params: Promise<{ provider: string }> };
+type Params = { provider: string };
 
-export async function DELETE(_req: Request, { params }: P) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+export const DELETE = route<Params>("users.disconnect_account", async (_req, { params }) => {
+  const actor = await requireActor();
+  forbidOnDemo(actor);
 
-  const demoBlock = blockOnDemo(session);
-  if (demoBlock) return demoBlock;
-  const { provider } = await params;
-
-  const [accountCount, user] = await Promise.all([
-    prisma.account.count({ where: { userId: session.user.id } }),
-    prisma.user.findUnique({ where: { id: session.user.id }, select: { password: true } }),
+  const [accounts, user] = await Promise.all([
+    prisma.account.findMany({ where: { userId: actor.userId }, select: { provider: true } }),
+    prisma.user.findUnique({ where: { id: actor.userId }, select: { password: true } }),
   ]);
-
-  // Prevent removing the only sign-in method
-  if (accountCount <= 1 && !user?.password) {
-    return NextResponse.json(
-      { success: false, message: "You must set a password before disconnecting your only sign-in method." },
-      { status: 400 }
-    );
+  if (!accounts.some((a) => a.provider === params.provider)) throw notFound("Connected account");
+  // Never remove someone's only way to sign in.
+  if (accounts.length <= 1 && !user?.password) {
+    throw conflict("Set a password before disconnecting your only sign-in method.");
   }
 
-  await prisma.account.deleteMany({ where: { userId: session.user.id, provider } });
-  return NextResponse.json({ success: true });
-}
+  await prisma.account.deleteMany({ where: { userId: actor.userId, provider: params.provider } });
+  return ok({ provider: params.provider });
+});

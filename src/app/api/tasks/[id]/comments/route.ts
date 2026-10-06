@@ -1,37 +1,29 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { jsonError, readJson, requireTaskAccess } from "@/lib/api/task-access";
-import { createCommentSchema, firstIssue } from "@/validations/task-items";
+import { created, ok, route } from "@/lib/api/handler";
+import { parseBody } from "@/lib/api/request";
+import { requireTaskAccess } from "@/lib/api/task-access";
+import { createCommentSchema } from "@/validations/task-items";
 
-type P = { params: Promise<{ id: string }> };
+type Params = { id: string };
+const withAuthor = { author: { select: { id: true, name: true, image: true } } } as const;
 
-export async function GET(_req: Request, { params }: P) {
-  const access = await requireTaskAccess((await params).id);
-  if (!access.ok) return access.response;
-
+export const GET = route<Params>("comments.list", async (_req, { params }) => {
+  const { actor, taskId } = await requireTaskAccess(params.id);
   const comments = await prisma.comment.findMany({
-    where: { taskId: access.taskId, tenantId: access.tenantId },
+    where: { taskId, tenantId: actor.tenant.tenantId },
     orderBy: { createdAt: "asc" },
-    include: { author: { select: { id: true, name: true, image: true } } },
+    include: withAuthor,
   });
-  return NextResponse.json({ success: true, data: comments });
-}
+  return ok(comments);
+});
 
-export async function POST(req: Request, { params }: P) {
-  const access = await requireTaskAccess((await params).id, "comment:create");
-  if (!access.ok) return access.response;
-
-  const parsed = createCommentSchema.safeParse(await readJson(req));
-  if (!parsed.success) return jsonError(firstIssue(parsed.error), 400);
+export const POST = route<Params>("comments.create", async (req, { params }) => {
+  const { actor, taskId } = await requireTaskAccess(params.id, "comment:create");
+  const { content } = await parseBody(req, createCommentSchema);
 
   const comment = await prisma.comment.create({
-    data: {
-      tenantId: access.tenantId,
-      taskId: access.taskId,
-      authorId: access.session.user.id,
-      content: parsed.data.content,
-    },
-    include: { author: { select: { id: true, name: true, image: true } } },
+    data: { tenantId: actor.tenant.tenantId, taskId, authorId: actor.userId, content },
+    include: withAuthor,
   });
-  return NextResponse.json({ success: true, data: comment }, { status: 201 });
-}
+  return created(comment);
+});

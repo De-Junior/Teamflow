@@ -1,59 +1,69 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { signIn }   from "next-auth/react";
-import { Button }   from "@/components/ui/button";
+import { useState } from "react";
+import { signIn } from "next-auth/react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { SkeletonList } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/ui/state";
+import { useApiQuery } from "@/hooks/use-api-query";
+import { api, errorMessage } from "@/lib/api-client";
 
 type Data = { accounts: Array<{ id: string; provider: string; providerAccountId: string }>; hasPassword: boolean };
 
-const PROVIDER_LABEL: Record<string, string> = { google: "Google" };
+const KEY = ["me", "connected-accounts"];
 
 export function ConnectedAccountsPanel() {
-  const [data, setData] = useState<Data | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const confirm = useConfirm();
+  const queryClient = useQueryClient();
+  const { data, isPending, isError, refetch } = useApiQuery<Data>(KEY, "/api/users/connected-accounts");
+  const [busy, setBusy] = useState(false);
 
-  function load() {
-    fetch("/api/users/connected-accounts").then(r => r.json()).then(j => { if (j.success) setData(j.data); });
-  }
-  useEffect(() => { load(); }, []);
+  async function disconnectGoogle() {
+    const ok = await confirm({
+      title: "Disconnect Google?",
+      description: "You won't be able to sign in with Google until you connect it again.",
+      confirmLabel: "Disconnect",
+      destructive: true,
+    });
+    if (!ok) return;
 
-  async function disconnect(provider: string) {
-    if (!confirm(`Disconnect ${PROVIDER_LABEL[provider] ?? provider}?`)) return;
-    setBusy(provider); setError(null);
+    setBusy(true);
     try {
-      const res  = await fetch(`/api/users/connected-accounts/${provider}`, { method: "DELETE" });
-      const json = await res.json();
-      if (!json.success) { setError(json.message); return; }
-      load();
-    } finally { setBusy(null); }
+      await api.delete("/api/users/connected-accounts/google");
+      toast.success("Google disconnected.");
+      await queryClient.invalidateQueries({ queryKey: KEY });
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
   }
 
-  if (!data) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (isPending) return <SkeletonList rows={1} />;
+  if (isError) return <ErrorState message="Your connected accounts didn't load." onRetry={() => void refetch()} />;
 
-  const connectedGoogle = data.accounts.find(a => a.provider === "google");
+  const google = data.accounts.find((a) => a.provider === "google");
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between rounded-md border border-border p-3">
-        <div>
-          <p className="text-sm font-medium text-foreground">Google</p>
-          <p className="text-xs text-muted-foreground">
-            {connectedGoogle ? "Connected" : "Not connected"}
-          </p>
-        </div>
-        {connectedGoogle ? (
-          <Button variant="outline" size="sm" disabled={busy === "google"} onClick={() => void disconnect("google")}>
-            Disconnect
-          </Button>
-        ) : (
-          <Button variant="outline" size="sm" onClick={() => void signIn("google")}>
-            Connect
-          </Button>
-        )}
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-3">
+      <div>
+        <p className="text-sm font-medium text-foreground">Google</p>
+        <p className="text-xs text-muted-foreground">
+          {google ? "Connected. You can sign in with Google." : "Not connected."}
+        </p>
       </div>
-
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {google ? (
+        <Button variant="outline" size="sm" disabled={busy} onClick={() => void disconnectGoogle()}>
+          {busy ? "Disconnecting…" : "Disconnect"}
+        </Button>
+      ) : (
+        <Button variant="outline" size="sm" onClick={() => void signIn("google", { callbackUrl: "/dashboard/profile" })}>
+          Connect
+        </Button>
+      )}
     </div>
   );
 }

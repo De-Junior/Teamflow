@@ -1,53 +1,28 @@
-import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { z } from "zod";
 import { notificationRepository } from "@/lib/db/tenant";
+import { ok, route } from "@/lib/api/handler";
+import { idSchema, parseBody, parseQuery } from "@/lib/api/request";
+import { requireActor } from "@/lib/api/session";
 
-export async function GET(request: Request) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+const listQuery = z.object({ unreadOnly: z.enum(["true", "false"]).optional() });
+const markSchema = z.union([z.object({ markAll: z.literal(true) }), z.object({ id: idSchema })]);
 
-  const ctx = {
-    tenantId: session.user.tenantId,
-    organizationId: session.user.organizationId,
-    userId: session.user.id,
-  };
-
-  const { searchParams } = new URL(request.url);
-  const unreadOnly = searchParams.get("unreadOnly") === "true";
-
-  const repo = notificationRepository(ctx);
+export const GET = route("notifications.list", async (req) => {
+  const actor = await requireActor();
+  const { unreadOnly } = parseQuery(req, listQuery);
+  const repo = notificationRepository(actor.tenant);
   const [notifications, unreadCount] = await Promise.all([
-    repo.findMany({ unreadOnly, take: 30 }),
+    repo.findMany({ unreadOnly: unreadOnly === "true", take: 30 }),
     repo.unreadCount(),
   ]);
+  return ok({ notifications, unreadCount });
+});
 
-  return NextResponse.json({ notifications, unreadCount });
-}
-
-export async function PATCH(request: Request) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const ctx = {
-    tenantId: session.user.tenantId,
-    organizationId: session.user.organizationId,
-    userId: session.user.id,
-  };
-
-  const body = await request.json();
-  const repo = notificationRepository(ctx);
-
-  if (body.markAll) {
-    await repo.markAllRead();
-  } else if (body.id) {
-    await repo.markRead(body.id);
-  } else {
-    return NextResponse.json({ error: "Missing id or markAll" }, { status: 400 });
-  }
-
-  return NextResponse.json({ success: true });
-}
+export const PATCH = route("notifications.mark_read", async (req) => {
+  const actor = await requireActor();
+  const input = await parseBody(req, markSchema);
+  const repo = notificationRepository(actor.tenant);
+  if ("markAll" in input) await repo.markAllRead();
+  else await repo.markRead(input.id);
+  return ok({ updated: true });
+});

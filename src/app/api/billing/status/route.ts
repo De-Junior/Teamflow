@@ -1,40 +1,14 @@
-import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
+import { ok, route } from "@/lib/api/handler";
+import { requireActor } from "@/lib/api/session";
 
-export async function GET() {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  }
+const FREE_PLAN = { plan: "FREE", status: "ACTIVE", currentPeriodEnd: null, cancelAtPeriodEnd: false } as const;
 
-  try {
-    const subscription = await prisma.subscription.findUnique({
-      where: { organizationId: session.user.organizationId },
-      select: {
-        plan: true,
-        status: true,
-        currentPeriodEnd: true,
-        cancelAtPeriodEnd: true,
-        stripeCustomerId: true,
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: subscription ?? {
-        plan: "FREE",
-        status: "ACTIVE",
-        currentPeriodEnd: null,
-        cancelAtPeriodEnd: false,
-        stripeCustomerId: null,
-      },
-    });
-  } catch (error) {
-    console.error("[BILLING_STATUS_ERROR]", error);
-    return NextResponse.json(
-      { success: false, message: "Something went wrong." },
-      { status: 500 }
-    );
-  }
-}
+export const GET = route("billing.status", async () => {
+  const actor = await requireActor();
+  const subscription = await prisma.subscription.findUnique({
+    where: { organizationId: actor.tenant.organizationId },
+    select: { plan: true, status: true, currentPeriodEnd: true, cancelAtPeriodEnd: true },
+  });
+  return ok(subscription ?? FREE_PLAN);
+});

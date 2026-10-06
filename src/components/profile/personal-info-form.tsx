@@ -7,75 +7,66 @@ import { Input }     from "@/components/ui/input";
 import { Label }     from "@/components/ui/label";
 import { Textarea }  from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast }     from "sonner";
+import { api, errorMessage } from "@/lib/api-client";
 
 const TIMEZONES = [
   "UTC", "America/New_York", "America/Chicago", "America/Los_Angeles",
   "Europe/London", "Europe/Berlin", "Africa/Johannesburg",
   "Asia/Dubai", "Asia/Kolkata", "Asia/Tokyo", "Australia/Sydney",
 ];
-const LANGUAGES = [
-  { value: "en", label: "English" }, { value: "es", label: "Spanish" },
-  { value: "fr", label: "French" },  { value: "pt", label: "Portuguese" },
-  { value: "de", label: "German" },  { value: "zh", label: "Chinese" },
-];
 
 export function PersonalInfoForm({
-  initialName, email, initialPhone, initialTimezone, initialLanguage, initialBio,
+  initialName, email, initialPhone, initialTimezone, initialBio,
 }: {
   initialName: string; email: string;
   initialPhone: string; initialTimezone: string;
-  initialLanguage: string; initialBio: string;
+  initialBio: string;
 }) {
   const { update } = useSession();
   const [name, setName]         = useState(initialName);
   const [phone, setPhone]       = useState(initialPhone);
   const [timezone, setTimezone] = useState(initialTimezone || "UTC");
-  const [language, setLanguage] = useState(initialLanguage || "en");
   const [bio, setBio]           = useState(initialBio);
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState<string | null>(null);
-  const [success, setSuccess]   = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) { setError("Name is required."); return; }
-    setError(null); setSuccess(false); setSaving(true);
+    setError(null); setSaving(true);
     try {
-      const res = await fetch("/api/users", {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), phone: phone || null, timezone, language, bio: bio || null }),
-      });
-      const json = await res.json();
-      if (!json.success) { setError(json.message); return; }
+      await api.patch("/api/users", { name: name.trim(), phone: phone || null, timezone, bio: bio || null });
       await update({ name: name.trim() });
-      setSuccess(true);
-    } catch {
-      setError("Something went wrong. Please try again.");
+      toast.success("Profile updated.");
+    } catch (err) {
+      setError(errorMessage(err));
     } finally { setSaving(false); }
   }
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="name">Full name</Label>
-          <Input id="name" value={name} onChange={(e) => { setName(e.target.value); setSuccess(false); }} disabled={saving} />
+          <Input id="name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} disabled={saving} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label>Email</Label>
-          <Input value={email} disabled />
+          <Label htmlFor="email">Email</Label>
+          <Input id="email" value={email} disabled aria-describedby="email-hint" />
+          <p id="email-hint" className="text-xs text-muted-foreground">Your sign-in email can&apos;t be changed here.</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="phone">Phone</Label>
-          <Input id="phone" placeholder="+27 82 123 4567" value={phone} onChange={(e) => { setPhone(e.target.value); setSuccess(false); }} disabled={saving} />
+          <Input id="phone" type="tel" autoComplete="tel" placeholder="+27 82 123 4567" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={saving} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label>Timezone</Label>
-          <Select value={timezone} onValueChange={(v) => { setTimezone(v); setSuccess(false); }}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+          <Label htmlFor="timezone">Timezone</Label>
+          <Select value={timezone} onValueChange={setTimezone}>
+            <SelectTrigger id="timezone"><SelectValue /></SelectTrigger>
             <SelectContent>
               {TIMEZONES.map((tz) => <SelectItem key={tz} value={tz}>{tz}</SelectItem>)}
             </SelectContent>
@@ -84,24 +75,13 @@ export function PersonalInfoForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label>Language</Label>
-        <Select value={language} onValueChange={(v) => { setLanguage(v); setSuccess(false); }}>
-          <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {LANGUAGES.map((l) => <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
         <Label htmlFor="bio">Bio</Label>
         <Textarea id="bio" placeholder="A short bio about yourself…" value={bio}
-          onChange={(e) => { setBio(e.target.value); setSuccess(false); }} disabled={saving} maxLength={500} />
+          onChange={(e) => setBio(e.target.value)} disabled={saving} maxLength={500} />
         <p className="text-xs text-muted-foreground">{bio.length}/500</p>
       </div>
 
-      {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
-      {success && <p className="rounded-md bg-green-500/10 px-3 py-2 text-sm text-green-600">Profile updated.</p>}
+      {error && <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
 
       <div>
         <Button type="submit" disabled={saving || !name.trim()}>

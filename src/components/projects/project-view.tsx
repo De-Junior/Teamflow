@@ -8,7 +8,6 @@ import { TaskListView }                         from "@/components/tasks/task-li
 import { TaskCalendarView }                     from "@/components/tasks/task-calendar-view";
 import { TaskFilterBar }                        from "@/components/tasks/task-filter-bar";
 import { ProjectHeader }                        from "@/components/projects/project-header";
-import { KanbanDoneButton }                     from "@/components/tasks/kanban-done-button";
 import { ProjectMembersManager }                from "@/components/projects/project-members-manager";
 import { LayoutGrid, List, Calendar }           from "lucide-react";
 import { cn }                                   from "@/lib/utils";
@@ -35,7 +34,7 @@ function matchesFilters(task: TaskCardData, f: Filters) {
 }
 
 export function ProjectView({
-  project, initialTasks, members, allOrgMembers, canManageMembers, userRole, currentUserId,
+  project, initialTasks, members, allOrgMembers, canManageMembers, userRole, currentUserId, initialView,
 }: {
   project:          ProjectViewData;
   initialTasks:     TaskCardData[];
@@ -44,9 +43,11 @@ export function ProjectView({
   canManageMembers: boolean;
   userRole:         string;
   currentUserId:    string;
+  /** The user's "default project view" preference. */
+  initialView?:     string;
 }) {
   const router = useRouter();
-  const [view,           setView]           = useState<View>("kanban");
+  const [view,           setView]           = useState<View>(() => (initialView === "list" || initialView === "calendar" ? initialView : "kanban"));
   const [tasks,          setTasks]          = useState<TaskCardData[]>(initialTasks);
   const [filters,        setFilters]        = useState<Filters>(DEFAULT_FILTERS);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -91,11 +92,11 @@ export function ProjectView({
 
       {/* Toolbar: view toggle + filters + members + done button */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center rounded-md border border-border p-0.5">
+        <div role="group" aria-label="View" className="flex items-center rounded-md border border-border p-0.5">
           {(["kanban","list","calendar"] as View[]).map((v) => {
             const Icon = v === "kanban" ? LayoutGrid : v === "list" ? List : Calendar;
             return (
-              <button key={v} onClick={() => setView(v)}
+              <button key={v} onClick={() => setView(v)} aria-pressed={view === v}
                 className={cn(
                   "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors capitalize",
                   view === v ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"
@@ -118,11 +119,10 @@ export function ProjectView({
           />
         )}
 
-        <div className="ml-auto"><KanbanDoneButton /></div>
       </div>
 
       {/* Analytics strip */}
-      <div className="grid grid-cols-2 gap-4 rounded-lg border border-border bg-card px-4 py-3 sm:grid-cols-5">
+      <div className="hidden grid-cols-5 gap-4 rounded-lg border border-border bg-card px-4 py-3 sm:grid">
         <Stat label="Total tasks"    value={tasks.length}  />
         <Stat label="Completed"      value={doneCount}     />
         <Stat label="In progress"    value={tasks.filter(t=>t.status==="IN_PROGRESS").length} />
@@ -143,7 +143,7 @@ export function ProjectView({
           onTasksMoved={handleTaskUpdated}
         />
       )}
-      {view === "list"     && <TaskListView    tasks={filteredTasks} userRole={userRole} onTaskClick={handleTaskClick} onTaskDeleted={handleTaskDeleted} />}
+      {view === "list"     && <TaskListView    tasks={filteredTasks} userRole={userRole} onTaskClick={handleTaskClick} onTaskDeleted={handleTaskDeleted} onTaskMarkedDone={handleTaskDone} />}
       {view === "calendar" && <TaskCalendarView tasks={filteredTasks} onTaskClick={handleTaskClick} />}
 
       {/* Task detail modal */}
@@ -152,7 +152,7 @@ export function ProjectView({
         taskId={selectedTaskId}
         userRole={userRole}
         currentUserId={currentUserId}
-        members={members}
+        members={allOrgMembers}
         onClose={handleModalClose}
         onTaskUpdated={handleTaskUpdated}
       />

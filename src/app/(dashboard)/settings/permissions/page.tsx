@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { Role } from "@prisma/client";
 import { getRolePermissions } from "@/lib/auth/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,8 +56,8 @@ export default function PermissionsSettingsPage() {
               </thead>
               <tbody>
                 {PERMISSION_GROUPS.map((group) => (
-                  <>
-                    <tr key={group.label}>
+                  <Fragment key={group.label}>
+                    <tr>
                       <td
                         colSpan={DISPLAY_ROLES.length + 1}
                         className="pb-1.5 pt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground first:pt-2"
@@ -83,7 +84,7 @@ export default function PermissionsSettingsPage() {
                         })}
                       </tr>
                     ))}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

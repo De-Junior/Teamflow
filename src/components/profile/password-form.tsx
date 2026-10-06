@@ -1,68 +1,130 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input }  from "@/components/ui/input";
-import { Label }  from "@/components/ui/label";
 import { Eye, EyeOff } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { api, errorMessage, fieldError } from "@/lib/api-client";
 
-export function PasswordForm() {
-  const [currentPw, setCurrentPw] = useState("");
-  const [newPw, setNewPw]         = useState("");
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew]         = useState(false);
-  const [error, setError]     = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [saving, setSaving]   = useState(false);
+function PasswordInput({
+  id,
+  label,
+  value,
+  onChange,
+  disabled,
+  autoComplete,
+  hint,
+  error,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  disabled: boolean;
+  autoComplete: string;
+  hint?: string;
+  error?: string;
+}) {
+  const [visible, setVisible] = useState(false);
+  const describedBy = [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(" ") || undefined;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="relative">
+        <Input
+          id={id}
+          type={visible ? "text" : "password"}
+          autoComplete={autoComplete}
+          className="pr-10"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          aria-invalid={Boolean(error)}
+          aria-describedby={describedBy}
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          aria-label={visible ? "Hide password" : "Show password"}
+          aria-pressed={visible}
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+        >
+          {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+        </button>
+      </div>
+      {hint && <p id={`${id}-hint`} className="text-xs text-muted-foreground">{hint}</p>}
+      {error && <p id={`${id}-error`} className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+export function PasswordForm({ hasPassword }: { hasPassword: boolean }) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+
+  if (!hasPassword) {
+    return (
+      <p className="max-w-md text-sm text-muted-foreground">
+        You sign in with Google, so there&apos;s no TeamFlow password to change. Manage your password in your Google account.
+      </p>
+    );
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null); setSuccess(false); setSaving(true);
+    setError(null);
+    setSaving(true);
     try {
-      const res = await fetch("/api/users", {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
-      });
-      const json = await res.json();
-      if (!json.success) { setError(json.message); return; }
-      setSuccess(true); setCurrentPw(""); setNewPw("");
-    } catch {
-      setError("Something went wrong.");
-    } finally { setSaving(false); }
+      await api.patch("/api/users", { currentPassword, newPassword });
+      setCurrentPassword("");
+      setNewPassword("");
+      toast.success("Password changed.");
+    } catch (err) {
+      setError(err);
+    } finally {
+      setSaving(false);
+    }
   }
+
+  const currentError = fieldError(error, "currentPassword");
+  const newError = fieldError(error, "newPassword");
+  const formError = error && !currentError && !newError ? errorMessage(error) : null;
 
   return (
     <form onSubmit={handleSubmit} className="flex max-w-sm flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="current-pw">Current password</Label>
-        <div className="relative">
-          <Input id="current-pw" type={showCurrent ? "text" : "password"} className="pr-10"
-            value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} disabled={saving} />
-          <button type="button" tabIndex={-1} onClick={() => setShowCurrent(v => !v)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-            {showCurrent ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-          </button>
-        </div>
-      </div>
+      <PasswordInput
+        id="current-password"
+        label="Current password"
+        autoComplete="current-password"
+        value={currentPassword}
+        onChange={setCurrentPassword}
+        disabled={saving}
+        error={currentError}
+      />
+      <PasswordInput
+        id="new-password"
+        label="New password"
+        autoComplete="new-password"
+        value={newPassword}
+        onChange={setNewPassword}
+        disabled={saving}
+        hint="At least 8 characters, with an uppercase letter and a number."
+        error={newError}
+      />
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="new-pw">New password</Label>
-        <div className="relative">
-          <Input id="new-pw" type={showNew ? "text" : "password"} className="pr-10"
-            value={newPw} onChange={(e) => setNewPw(e.target.value)} disabled={saving} />
-          <button type="button" tabIndex={-1} onClick={() => setShowNew(v => !v)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-            {showNew ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground">8+ characters, one uppercase letter, one number.</p>
-      </div>
-
-      {error   && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
-      {success && <p className="rounded-md bg-green-500/10 px-3 py-2 text-sm text-green-600">Password changed.</p>}
+      {formError && (
+        <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {formError}
+        </p>
+      )}
 
       <div>
-        <Button type="submit" variant="outline" disabled={saving || !currentPw || !newPw}>
+        <Button type="submit" variant="outline" disabled={saving || !currentPassword || !newPassword}>
           {saving ? "Changing…" : "Change password"}
         </Button>
       </div>

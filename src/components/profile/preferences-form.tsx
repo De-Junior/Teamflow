@@ -1,45 +1,60 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useTheme }            from "@/components/providers/theme-provider";
-import { Label }               from "@/components/ui/label";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { useTheme } from "@/components/providers/theme-provider";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn }                  from "@/lib/utils";
+import { SkeletonList } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/ui/state";
+import { useApiQuery } from "@/hooks/use-api-query";
+import { api, errorMessage } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 
 type Prefs = {
-  theme: string; emailNotifications: boolean;
-  taskAssignedNotif: boolean; taskUpdatedNotif: boolean; defaultView: string;
+  emailNotifications: boolean;
+  taskAssignedNotif: boolean;
+  defaultView: string;
 };
+
+const KEY = ["me", "preferences"];
+
+const NOTIFICATION_OPTIONS = [
+  { key: "taskAssignedNotif", label: "Notify me when I'm assigned a task" },
+  { key: "emailNotifications", label: "Also send those notifications by email" },
+] as const;
 
 export function PreferencesForm() {
   const { theme, setTheme } = useTheme();
-  const [prefs, setPrefs]   = useState<Prefs | null>(null);
-  const [saving, setSaving] = useState(false);
+  const queryClient = useQueryClient();
+  const { data: prefs, isPending, isError, refetch } = useApiQuery<Prefs>(KEY, "/api/users/preferences");
 
-  useEffect(() => {
-    fetch("/api/users/preferences").then(r => r.json()).then(j => { if (j.success) setPrefs(j.data); });
-  }, []);
-
+  // Optimistic: the control updates immediately and rolls back if saving fails.
   async function update(patch: Partial<Prefs>) {
-    setPrefs(p => p ? { ...p, ...patch } : p);
-    setSaving(true);
+    const previous = queryClient.getQueryData<Prefs>(KEY);
+    queryClient.setQueryData<Prefs>(KEY, (p) => (p ? { ...p, ...patch } : p));
     try {
-      await fetch("/api/users/preferences", {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
-      });
-    } finally { setSaving(false); }
+      await api.patch("/api/users/preferences", patch);
+      toast.success("Preferences saved.");
+    } catch (err) {
+      queryClient.setQueryData(KEY, previous);
+      toast.error(errorMessage(err));
+    }
   }
 
-  if (!prefs) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (isPending) return <SkeletonList rows={3} />;
+  if (isError) return <ErrorState message="Your preferences didn't load." onRetry={() => void refetch()} />;
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Theme */}
-      <div>
-        <Label className="mb-2 block">Theme</Label>
+      <fieldset>
+        <legend className="mb-2 text-sm font-medium text-foreground">Theme</legend>
         <div className="flex gap-2">
           {(["light", "dark", "system"] as const).map((t) => (
-            <button key={t}
+            <button
+              key={t}
+              type="button"
+              aria-pressed={theme === t}
               onClick={() => setTheme(t)}
               className={cn(
                 "rounded-md border px-3 py-1.5 text-sm capitalize transition-colors",
@@ -50,44 +65,38 @@ export function PreferencesForm() {
             </button>
           ))}
         </div>
-      </div>
+      </fieldset>
 
-      {/* Default view */}
       <div>
-        <Label className="mb-2 block">Default project view</Label>
+        <Label htmlFor="default-view" className="mb-2 block">Default project view</Label>
         <Select value={prefs.defaultView} onValueChange={(v) => void update({ defaultView: v })}>
-          <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+          <SelectTrigger id="default-view" className="w-48"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="kanban">Kanban</SelectItem>
             <SelectItem value="list">List</SelectItem>
             <SelectItem value="calendar">Calendar</SelectItem>
           </SelectContent>
         </Select>
+        <p className="mt-1.5 text-xs text-muted-foreground">Projects open in this view.</p>
       </div>
 
-      {/* Notifications */}
-      <div>
-        <Label className="mb-2 block">Notifications</Label>
+      <fieldset>
+        <legend className="mb-2 text-sm font-medium text-foreground">Notifications</legend>
         <div className="flex flex-col gap-2">
-          {[
-            { key: "emailNotifications", label: "Email notifications" },
-            { key: "taskAssignedNotif",  label: "When I'm assigned a task" },
-            { key: "taskUpdatedNotif",   label: "When my tasks are updated" },
-          ].map(({ key, label }) => (
+          {NOTIFICATION_OPTIONS.map(({ key, label }) => (
             <label key={key} className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
               <input
                 type="checkbox"
-                checked={prefs[key as keyof Prefs] as boolean}
-                onChange={(e) => void update({ [key]: e.target.checked } as Partial<Prefs>)}
-                className="h-4 w-4 rounded accent-primary"
+                checked={prefs[key]}
+                disabled={key === "emailNotifications" && !prefs.taskAssignedNotif}
+                onChange={(e) => void update({ [key]: e.target.checked })}
+                className="h-4 w-4 rounded accent-primary disabled:opacity-50"
               />
               {label}
             </label>
           ))}
         </div>
-      </div>
-
-      {saving && <p className="text-xs text-muted-foreground">Saving…</p>}
+      </fieldset>
     </div>
   );
 }

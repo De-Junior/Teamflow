@@ -1,19 +1,14 @@
-import { NextResponse } from "next/server";
-import { auth }         from "@/lib/auth";
-import { blockOnDemo } from "@/lib/api/demo-guard";
-import { prisma }       from "@/lib/db/prisma";
+import { prisma } from "@/lib/db/prisma";
+import { forbidOnDemo } from "@/lib/api/demo-guard";
+import { ok, route } from "@/lib/api/handler";
+import { requireActor } from "@/lib/api/session";
 
-export async function POST() {
-  const session = await auth();
-  if (!session?.user?.sessionId) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-
-  const demoBlock = blockOnDemo(session);
-  if (demoBlock) return demoBlock;
-
-  await prisma.activeSession.updateMany({
-    where: { userId: session.user.id, sessionId: { not: session.user.sessionId }, revoked: false },
-    data:  { revoked: true },
+export const POST = route("users.revoke_other_sessions", async () => {
+  const actor = await requireActor();
+  forbidOnDemo(actor);
+  const { count } = await prisma.activeSession.updateMany({
+    where: { userId: actor.userId, sessionId: { not: actor.session.user.sessionId }, revoked: false },
+    data: { revoked: true },
   });
-
-  return NextResponse.json({ success: true });
-}
+  return ok({ revoked: count });
+});

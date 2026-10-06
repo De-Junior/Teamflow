@@ -1,19 +1,24 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Button }                       from "@/components/ui/button";
-import { Input }                        from "@/components/ui/input";
-import { Textarea }                     from "@/components/ui/textarea";
-import { Label }                        from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn }                           from "@/lib/utils";
-import { hasPermission }                from "@/lib/auth/permissions";
-import type { Role }                    from "@prisma/client";
+import { useRef, useState } from "react";
+import { useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { toast } from "sonner";
+import type { Role } from "@prisma/client";
 import {
   X, Plus, Trash2, Check, Clock, MessageSquare,
   CheckSquare, ListTodo, Activity, Info, Send,
 } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton, SkeletonList } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/ui/state";
+import { api, errorMessage } from "@/lib/api-client";
+import { hasPermission } from "@/lib/auth/permissions";
+import { cn } from "@/lib/utils";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type FullTask = {
@@ -24,12 +29,15 @@ type FullTask = {
   labels:   Array<{ id: string; name: string; color: string }>;
   createdAt: string; updatedAt: string;
 };
-type SubTask      = { id: string; title: string; completed: boolean };
+type SubTask       = { id: string; title: string; completed: boolean };
 type ChecklistItem = { id: string; title: string; checked: boolean };
-type Comment      = { id: string; content: string; createdAt: string; author: { id: string; name: string | null } };
-type TimeEntry    = { id: string; minutes: number; note: string | null; createdAt: string; user: { id: string; name: string | null } };
-type LogEntry     = { id: string; action: string; createdAt: string; user: { name: string | null; email: string }; metadata: unknown };
-type Member       = { id: string; name: string | null; image: string | null };
+type Comment       = { id: string; content: string; createdAt: string; author: { id: string; name: string | null } };
+type TimeEntry     = { id: string; minutes: number; note: string | null; createdAt: string; user: { id: string; name: string | null } };
+type LogEntry      = { id: string; action: string; createdAt: string; user: { name: string | null; email: string } | null; metadata: unknown };
+type Member        = { id: string; name: string | null; image: string | null };
+
+/** What the signed-in member may do in this task, derived from the shared permission matrix. */
+type Abilities = { edit: boolean; assign: boolean; comment: boolean; moderate: boolean };
 
 const TABS = [
   { id: "details",   label: "Details",   icon: Info          },
@@ -43,23 +51,56 @@ const TABS = [
 type TabId = typeof TABS[number]["id"];
 
 const PRIORITY_DOT: Record<string, string> = {
-  LOW: "#22c55e", MEDIUM: "#f59e0b", HIGH: "#f97316", URGENT: "#ef4444",
+  LOW: "var(--priority-low)", MEDIUM: "var(--priority-medium)", HIGH: "var(--priority-high)", URGENT: "var(--priority-urgent)",
 };
-const LABEL_COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#3b82f6","#8b5cf6","#ec4899","#14b8a6"];
-const STATUS_OPTIONS  = ["BACKLOG","TODO","IN_PROGRESS","REVIEW","DONE"];
-const PRIORITY_OPTIONS = ["LOW","MEDIUM","HIGH","URGENT"];
-const STATUS_LABEL: Record<string,string> = {
-  BACKLOG:"Backlog", TODO:"To do", IN_PROGRESS:"In progress", REVIEW:"Review", DONE:"Done",
+const LABEL_COLORS = [
+  { hex: "#6366f1", name: "Indigo" }, { hex: "#10b981", name: "Green" }, { hex: "#f59e0b", name: "Amber" },
+  { hex: "#ef4444", name: "Red" }, { hex: "#3b82f6", name: "Blue" }, { hex: "#8b5cf6", name: "Violet" },
+  { hex: "#ec4899", name: "Pink" }, { hex: "#14b8a6", name: "Teal" },
+];
+const STATUS_OPTIONS   = ["BACKLOG", "TODO", "IN_PROGRESS", "REVIEW", "DONE"];
+const PRIORITY_OPTIONS = ["LOW", "MEDIUM", "HIGH", "URGENT"];
+const STATUS_LABEL: Record<string, string> = {
+  BACKLOG: "Backlog", TODO: "To do", IN_PROGRESS: "In progress", REVIEW: "Review", DONE: "Done",
 };
+const titleCase = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
 
 function fmt(iso: string) {
   const d = new Date(iso);
-  return d.toLocaleDateString(undefined,{ month:"short", day:"numeric", year:"numeric" })
-    + " " + d.toLocaleTimeString(undefined,{ hour:"2-digit", minute:"2-digit" });
+  return d.toLocaleDateString("en-GB", { month: "short", day: "numeric", year: "numeric" })
+    + " " + d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 function fmtMins(m: number) {
-  const h = Math.floor(m/60), rem = m%60;
+  const h = Math.floor(m / 60), rem = m % 60;
   return h > 0 ? `${h}h ${rem}m` : `${rem}m`;
+}
+
+// ─── Data helpers ──────────────────────────────────────────────────────────
+
+const taskKey = (taskId: string, part?: string): QueryKey => (part ? ["task", taskId, part] : ["task", taskId]);
+
+function useTaskPart<T>(taskId: string, part: string) {
+  return useQuery({ queryKey: taskKey(taskId, part), queryFn: () => api.get<T[]>(`/api/tasks/${taskId}/${part}`) });
+}
+
+/**
+ * Applies `change` to a cached list straight away, then runs the request.
+ * If the request fails the list goes back to how it was and the user is told.
+ */
+function useOptimisticList<T>(key: QueryKey) {
+  const queryClient = useQueryClient();
+  return async (change: (items: T[]) => T[], request: () => Promise<unknown>) => {
+    const previous = queryClient.getQueryData<T[]>(key);
+    queryClient.setQueryData<T[]>(key, (items) => change(items ?? []));
+    try {
+      await request();
+      return true;
+    } catch (err) {
+      queryClient.setQueryData(key, previous);
+      toast.error(errorMessage(err));
+      return false;
+    }
+  };
 }
 
 // ─── Main component ────────────────────────────────────────────────────────
@@ -73,121 +114,109 @@ export function TaskDetailModal({
   onClose:       () => void;
   onTaskUpdated?: () => void;
 }) {
-  const [tab,        setTab]        = useState<TabId>("details");
-  const [task,       setTask]       = useState<FullTask | null>(null);
-  // The parent remounts this component per task (key={taskId}), so state
-  // starts fresh for every task without effects resetting it.
-  const [loading,    setLoading]    = useState(Boolean(taskId));
-  const [loadError,  setLoadError]  = useState(false);
-  const [subtasks,   setSubtasks]   = useState<SubTask[] | null>(null);
-  const [checklist,  setChecklist]  = useState<ChecklistItem[] | null>(null);
-  const [comments,   setComments]   = useState<Comment[] | null>(null);
-  const [timeEntries,setTimeEntries]= useState<TimeEntry[] | null>(null);
-  const [activity,   setActivity]   = useState<LogEntry[] | null>(null);
-  const [saving,     setSaving]     = useState(false);
+  const [tab, setTab] = useState<TabId>("details");
+  const [saving, setSaving] = useState(false);
+  const queryClient = useQueryClient();
 
-  // Fetch the core task when the modal opens
-  useEffect(() => {
-    if (!taskId) return;
-    let cancelled = false;
-    fetch(`/api/tasks/${taskId}`)
-      .then(r => r.json())
-      .then(j => {
-        if (cancelled) return;
-        if (j.success) setTask(j.data);
-        else setLoadError(true);
-      })
-      .catch(() => { if (!cancelled) setLoadError(true); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [taskId]);
+  const role = userRole as Role;
+  const can: Abilities = {
+    edit: hasPermission(role, "task:update"),
+    assign: hasPermission(role, "task:assign"),
+    comment: hasPermission(role, "comment:create"),
+    moderate: hasPermission(role, "comment:delete"),
+  };
 
-  // Lazy-load each tab's data the first time it's opened
-  useEffect(() => {
-    if (!taskId) return;
-    const load = <T,>(path: string, set: (v: T) => void) =>
-      fetch(`/api/tasks/${taskId}/${path}`).then(r => r.json()).then(j => { if (j.success) set(j.data); });
-    if (tab === "subtasks"  && subtasks    === null) void load("subtasks",  setSubtasks);
-    if (tab === "checklist" && checklist   === null) void load("checklist", setChecklist);
-    if (tab === "comments"  && comments    === null) void load("comments",  setComments);
-    if (tab === "time"      && timeEntries === null) void load("time",      setTimeEntries);
-    if (tab === "activity"  && activity    === null) void load("activity",  setActivity);
-  }, [tab, taskId, subtasks, checklist, comments, timeEntries, activity]);
+  const { data: task, isPending, isError, error } = useQuery({
+    queryKey: taskKey(taskId ?? ""),
+    queryFn: () => api.get<FullTask>(`/api/tasks/${taskId}`),
+    enabled: Boolean(taskId),
+  });
 
-  async function patch(data: Record<string, unknown>) {
+  /** Saves task fields. The cache updates first; the server's copy replaces it, or the old one comes back on failure. */
+  async function patch(fields: Partial<FullTask>, body: Record<string, unknown> = fields) {
     if (!taskId) return;
+    const key = taskKey(taskId);
+    const previous = queryClient.getQueryData<FullTask>(key);
+    queryClient.setQueryData<FullTask>(key, (t) => (t ? { ...t, ...fields } : t));
     setSaving(true);
     try {
-      await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
+      queryClient.setQueryData(key, await api.patch<FullTask>(`/api/tasks/${taskId}`, body));
+      queryClient.invalidateQueries({ queryKey: taskKey(taskId, "activity") });
       onTaskUpdated?.();
-    } finally { setSaving(false); }
-  }
-
-  function updateLocalTask(fields: Partial<FullTask>) {
-    setTask(prev => prev ? { ...prev, ...fields } : null);
+    } catch (err) {
+      queryClient.setQueryData(key, previous);
+      toast.error(errorMessage(err));
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (!taskId) return null;
 
   return (
     <Dialog open={!!taskId} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent hideClose className="flex max-h-[90vh] w-full max-w-4xl flex-col gap-0 overflow-hidden p-0">
+      <DialogContent hideClose className="flex max-h-[92vh] w-[calc(100%-1rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0">
         {/* The visible title is an inline editor, so screen readers get this one */}
         <DialogTitle className="sr-only">{task?.title ?? "Task details"}</DialogTitle>
-        {loadError ? (
+        {isError ? (
           <div className="flex flex-col items-center justify-center gap-3 p-16 text-center">
-            <p className="text-sm text-muted-foreground">This task couldn&apos;t be loaded. It may have been deleted.</p>
+            <p className="text-sm text-muted-foreground">{errorMessage(error)}</p>
             <Button size="sm" variant="outline" onClick={onClose}>Close</Button>
           </div>
-        ) : loading || !task ? (
-          <div className="flex items-center justify-center p-16">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+        ) : isPending ? (
+          <div role="status" className="flex flex-col gap-4 p-6">
+            <span className="sr-only">Loading task</span>
+            <Skeleton className="h-6 w-2/3" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-40 w-full" />
           </div>
         ) : (
           <>
             {/* Header */}
-            <div className="flex items-start gap-3 border-b border-border px-6 py-4">
-              <span className="mt-2 size-2 shrink-0 rounded-full" style={{ backgroundColor: PRIORITY_DOT[task.priority] }} />
-              <TitleInput
-                value={task.title}
-                onBlur={(v) => { updateLocalTask({ title: v }); void patch({ title: v }); }}
+            <div className="flex items-start gap-3 border-b border-border px-4 py-4 sm:px-6">
+              <span
+                aria-label={`${titleCase(task.priority)} priority`}
+                className="mt-2 size-2 shrink-0 rounded-full"
+                style={{ backgroundColor: PRIORITY_DOT[task.priority] }}
               />
+              <TitleInput value={task.title} disabled={!can.edit} onCommit={(title) => void patch({ title })} />
               <button onClick={onClose} className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted" aria-label="Close task">
                 <X className="size-4" />
               </button>
             </div>
 
             {/* Tab bar */}
-            <div className="flex border-b border-border px-6">
+            <div role="tablist" aria-label="Task sections" className="flex items-center overflow-x-auto border-b border-border px-2 sm:px-6">
               {TABS.map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
+                  role="tab"
+                  aria-selected={tab === id}
                   onClick={() => setTab(id)}
                   className={cn(
-                    "-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors",
+                    "-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors",
                     tab === id
                       ? "border-primary text-foreground"
                       : "border-transparent text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  <Icon className="size-3.5" />
+                  <Icon aria-hidden className="size-3.5" />
                   {label}
                 </button>
               ))}
-              {saving && <span className="ml-auto self-center text-xs text-muted-foreground">Saving…</span>}
+              <span aria-live="polite" className="ml-auto shrink-0 self-center pl-3 text-xs text-muted-foreground">
+                {saving ? "Saving…" : ""}
+              </span>
             </div>
 
             {/* Tab content */}
-            <div className="flex-1 overflow-y-auto">
-              {tab === "details"   && <DetailsTab task={task} members={members} updateLocal={updateLocalTask} patch={patch} userRole={userRole} />}
-              {tab === "subtasks"  && <SubtasksTab taskId={taskId} items={subtasks}  setItems={setSubtasks}  userRole={userRole} />}
-              {tab === "checklist" && <ChecklistTab taskId={taskId} items={checklist} setItems={setChecklist} userRole={userRole} />}
-              {tab === "comments"  && <CommentsTab taskId={taskId} items={comments}  setItems={setComments}  currentUserId={currentUserId} userRole={userRole} />}
-              {tab === "time"      && <TimeTab taskId={taskId} items={timeEntries}   setItems={setTimeEntries} currentUserId={currentUserId} userRole={userRole} />}
-              {tab === "activity"  && <ActivityTab items={activity} />}
+            <div role="tabpanel" className="flex-1 overflow-y-auto">
+              {tab === "details"   && <DetailsTab task={task} members={members} patch={patch} can={can} />}
+              {tab === "subtasks"  && <SubtasksTab taskId={taskId} can={can} />}
+              {tab === "checklist" && <ChecklistTab taskId={taskId} can={can} />}
+              {tab === "comments"  && <CommentsTab taskId={taskId} currentUserId={currentUserId} can={can} />}
+              {tab === "time"      && <TimeTab taskId={taskId} currentUserId={currentUserId} can={can} />}
+              {tab === "activity"  && <ActivityTab taskId={taskId} />}
             </div>
           </>
         )}
@@ -197,36 +226,47 @@ export function TaskDetailModal({
 }
 
 // ─── Title input ───────────────────────────────────────────────────────────
-function TitleInput({ value, onBlur }: { value: string; onBlur: (v: string) => void }) {
+function TitleInput({ value, disabled, onCommit }: { value: string; disabled: boolean; onCommit: (v: string) => void }) {
   const [v, setV] = useState(value);
   const [syncedFrom, setSyncedFrom] = useState(value);
   if (syncedFrom !== value) { setSyncedFrom(value); setV(value); }
+
+  function commit() {
+    const next = v.trim();
+    if (!next) setV(value);
+    else if (next !== value) onCommit(next);
+  }
+
   return (
     <input
-      className="flex-1 bg-transparent text-base font-semibold text-foreground outline-none placeholder:text-muted-foreground"
+      aria-label="Task title"
+      className="min-w-0 flex-1 rounded bg-transparent text-base font-semibold text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
       value={v}
+      maxLength={200}
+      disabled={disabled}
       onChange={(e) => setV(e.target.value)}
-      onBlur={() => { if (v.trim() && v !== value) onBlur(v.trim()); }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") { setV(value); }
+      }}
     />
   );
 }
 
 // ─── Details tab ────────────────────────────────────────────────────────────
-function DetailsTab({ task, members, updateLocal, patch, userRole }: {
+function DetailsTab({ task, members, patch, can }: {
   task: FullTask;
   members: Member[];
-  updateLocal: (f: Partial<FullTask>) => void;
-  patch: (d: Record<string, unknown>) => void;
-  userRole: string;
+  patch: (fields: Partial<FullTask>, body?: Record<string, unknown>) => Promise<void>;
+  can: Abilities;
 }) {
+  const queryClient = useQueryClient();
   const [desc, setDesc] = useState(task.description ?? "");
   const [newLabel, setNewLabel] = useState("");
-  const [newLabelColor, setNewLabelColor] = useState(LABEL_COLORS[0]);
+  const [newLabelColor, setNewLabelColor] = useState(LABEL_COLORS[0].hex);
   const [showLabelForm, setShowLabelForm] = useState(false);
-
-  // Only Owners/Managers (and Super Admin) can (re)assign a task —
-  // mirrors the "task:assign" permission in src/lib/auth/permissions.ts
-  const canAssign = hasPermission(userRole as Role, "task:assign");
+  const [addingLabel, setAddingLabel] = useState(false);
 
   const [descSyncedFrom, setDescSyncedFrom] = useState(task.description);
   if (descSyncedFrom !== task.description) {
@@ -234,318 +274,325 @@ function DetailsTab({ task, members, updateLocal, patch, userRole }: {
     setDesc(task.description ?? "");
   }
 
+  const setLabels = (labels: FullTask["labels"]) =>
+    queryClient.setQueryData<FullTask>(taskKey(task.id), (t) => (t ? { ...t, labels } : t));
+
   async function addLabel() {
     if (!newLabel.trim()) return;
-    const res = await fetch(`/api/tasks/${task.id}/labels`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newLabel.trim(), color: newLabelColor }),
-    });
-    const j = await res.json();
-    if (j.success) {
-      updateLocal({ labels: [...task.labels, j.data] });
-      setNewLabel(""); setShowLabelForm(false);
+    setAddingLabel(true);
+    try {
+      const label = await api.post<FullTask["labels"][number]>(`/api/tasks/${task.id}/labels`, { name: newLabel.trim(), color: newLabelColor });
+      setLabels([...task.labels, label]);
+      setNewLabel("");
+      setShowLabelForm(false);
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setAddingLabel(false);
     }
   }
 
   async function removeLabel(labelId: string) {
-    await fetch(`/api/tasks/${task.id}/labels/${labelId}`, { method: "DELETE" });
-    updateLocal({ labels: task.labels.filter(l => l.id !== labelId) });
+    const previous = task.labels;
+    setLabels(previous.filter((l) => l.id !== labelId));
+    try {
+      await api.delete(`/api/tasks/${task.id}/labels/${labelId}`);
+    } catch (err) {
+      setLabels(previous);
+      toast.error(errorMessage(err));
+    }
   }
 
   return (
-    <div className="grid grid-cols-[1fr_260px] divide-x divide-border">
-      {/* Left: description */}
-      <div className="p-6">
-        <Label className="mb-2 block text-xs text-muted-foreground">Description</Label>
+    <div className="grid md:grid-cols-[1fr_260px] md:divide-x md:divide-border">
+      {/* Left: description and labels */}
+      <div className="p-4 sm:p-6">
+        <Label htmlFor="task-description" className="mb-2 block text-xs text-muted-foreground">Description</Label>
         <Textarea
+          id="task-description"
           className="min-h-32 resize-y text-sm"
-          placeholder="Add a description…"
+          placeholder={can.edit ? "Add a description…" : "No description."}
           value={desc}
+          maxLength={5000}
+          disabled={!can.edit}
           onChange={(e) => setDesc(e.target.value)}
           onBlur={() => { if (desc !== (task.description ?? "")) void patch({ description: desc || null }); }}
         />
 
-        {/* Labels */}
         <div className="mt-6">
-          <Label className="mb-2 block text-xs text-muted-foreground">Labels</Label>
-          <div className="flex flex-wrap gap-1.5">
+          <p className="mb-2 text-xs font-medium text-muted-foreground">Labels</p>
+          <ul className="flex flex-wrap gap-1.5">
             {task.labels.map((l) => (
-              <span
+              <li
                 key={l.id}
                 style={{ backgroundColor: l.color + "22", color: l.color, borderColor: l.color + "44" }}
                 className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium"
               >
                 {l.name}
-                <button onClick={() => void removeLabel(l.id)} className="opacity-60 hover:opacity-100">
-                  <X className="size-2.5" />
-                </button>
-              </span>
+                {can.edit && (
+                  <button onClick={() => void removeLabel(l.id)} aria-label={`Remove label ${l.name}`} className="rounded-full opacity-60 hover:opacity-100">
+                    <X className="size-3" />
+                  </button>
+                )}
+              </li>
             ))}
-            <button
-              onClick={() => setShowLabelForm((v) => !v)}
-              className="flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
-            >
-              <Plus className="size-2.5" /> Add
-            </button>
-          </div>
+            {task.labels.length === 0 && !can.edit && <li className="text-xs text-muted-foreground">No labels.</li>}
+            {can.edit && (
+              <li>
+                <button
+                  onClick={() => setShowLabelForm((v) => !v)}
+                  aria-expanded={showLabelForm}
+                  className="flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <Plus className="size-3" /> Add label
+                </button>
+              </li>
+            )}
+          </ul>
 
           {showLabelForm && (
-            <div className="mt-2 flex items-center gap-2">
+            <form
+              className="mt-3 flex flex-wrap items-center gap-2"
+              onSubmit={(e) => { e.preventDefault(); void addLabel(); }}
+            >
               <Input
-                className="h-7 text-xs"
+                aria-label="Label name"
+                className="h-8 w-40 text-xs"
                 placeholder="Label name"
+                maxLength={40}
+                autoFocus
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") void addLabel(); }}
               />
-              <div className="flex gap-1">
+              <div role="radiogroup" aria-label="Label colour" className="flex gap-1.5">
                 {LABEL_COLORS.map((c) => (
                   <button
-                    key={c} onClick={() => setNewLabelColor(c)}
-                    style={{ backgroundColor: c }}
-                    className={cn("size-4 rounded-full transition-transform", newLabelColor === c && "scale-125 ring-1 ring-offset-1")}
+                    key={c.hex}
+                    type="button"
+                    role="radio"
+                    aria-checked={newLabelColor === c.hex}
+                    aria-label={c.name}
+                    onClick={() => setNewLabelColor(c.hex)}
+                    style={{ backgroundColor: c.hex }}
+                    className={cn("size-5 rounded-full transition-transform", newLabelColor === c.hex && "scale-110 ring-2 ring-ring ring-offset-2 ring-offset-card")}
                   />
                 ))}
               </div>
-              <Button size="sm" className="h-7 text-xs" onClick={() => void addLabel()}>Add</Button>
-            </div>
+              <Button type="submit" size="sm" className="h-8 text-xs" disabled={!newLabel.trim() || addingLabel}>
+                {addingLabel ? "Adding…" : "Add"}
+              </Button>
+            </form>
           )}
         </div>
       </div>
 
-      {/* Right: metadata */}
-      <div className="flex flex-col gap-4 p-6">
-        {/* Status */}
+      {/* Right: fields */}
+      <div className="flex flex-col gap-4 border-t border-border p-4 sm:p-6 md:border-t-0">
         <div>
-          <Label className="mb-1.5 block text-xs text-muted-foreground">Status</Label>
-          <Select value={task.status} onValueChange={(v) => { updateLocal({ status: v }); void patch({ status: v }); }}>
-            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <Label htmlFor="task-status" className="mb-1.5 block text-xs text-muted-foreground">Status</Label>
+          <Select value={task.status} disabled={!can.edit} onValueChange={(status) => void patch({ status })}>
+            <SelectTrigger id="task-status" className="h-8 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{STATUS_LABEL[s]}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
 
-        {/* Priority */}
         <div>
-          <Label className="mb-1.5 block text-xs text-muted-foreground">Priority</Label>
-          <Select value={task.priority} onValueChange={(v) => { updateLocal({ priority: v }); void patch({ priority: v }); }}>
-            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <Label htmlFor="task-priority" className="mb-1.5 block text-xs text-muted-foreground">Priority</Label>
+          <Select value={task.priority} disabled={!can.edit} onValueChange={(priority) => void patch({ priority })}>
+            <SelectTrigger id="task-priority" className="h-8 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
-              {PRIORITY_OPTIONS.map((p) => <SelectItem key={p} value={p}>{p.charAt(0)+p.slice(1).toLowerCase()}</SelectItem>)}
+              {PRIORITY_OPTIONS.map((p) => <SelectItem key={p} value={p}>{titleCase(p)}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
 
-        {/* Assignee — editable only for roles with task:assign permission */}
         <div>
-          <Label className="mb-1.5 block text-xs text-muted-foreground">Assignee</Label>
-          {canAssign ? (
+          <Label htmlFor="task-assignee" className="mb-1.5 block text-xs text-muted-foreground">Assignee</Label>
+          {can.assign ? (
             <Select
               value={task.assignee?.id ?? "unassigned"}
               onValueChange={(v) => {
-                const m = members.find(m => m.id === v);
-                updateLocal({ assignee: v === "unassigned" ? null : { id: v, name: m?.name ?? null } });
-                void patch({ assigneeId: v === "unassigned" ? null : v });
+                const m = members.find((m) => m.id === v);
+                void patch(
+                  { assignee: v === "unassigned" ? null : { id: v, name: m?.name ?? null } },
+                  { assigneeId: v === "unassigned" ? null : v }
+                );
               }}
             >
-              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectTrigger id="task-assignee" className="h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="unassigned">Unassigned</SelectItem>
-                {members.map((m) => <SelectItem key={m.id} value={m.id}>{m.name ?? m.id}</SelectItem>)}
+                {members.map((m) => <SelectItem key={m.id} value={m.id}>{m.name ?? "Unnamed member"}</SelectItem>)}
               </SelectContent>
             </Select>
           ) : (
-            <div className="flex h-8 items-center rounded-md border border-border bg-muted/40 px-2.5 text-xs text-muted-foreground">
+            <p id="task-assignee" className="flex h-8 items-center rounded-md border border-border bg-muted/40 px-2.5 text-xs text-muted-foreground">
               {task.assignee?.name ?? "Unassigned"}
-            </div>
+            </p>
           )}
         </div>
 
-        {/* Due date */}
         <div>
-          <Label className="mb-1.5 block text-xs text-muted-foreground">Due date</Label>
+          <Label htmlFor="task-due" className="mb-1.5 block text-xs text-muted-foreground">Due date</Label>
           <Input
+            id="task-due"
             type="date"
             className="h-8 text-xs"
+            disabled={!can.edit}
             value={task.dueDate ? task.dueDate.split("T")[0] : ""}
             onChange={(e) => {
-              const iso = e.target.value ? new Date(e.target.value + "T00:00:00.000Z").toISOString() : null;
-              updateLocal({ dueDate: iso });
-              void patch({ dueDate: iso });
+              const dueDate = e.target.value ? new Date(e.target.value + "T00:00:00.000Z").toISOString() : null;
+              void patch({ dueDate });
             }}
           />
         </div>
 
-        {/* Meta */}
         <div className="mt-auto flex flex-col gap-1 border-t border-border pt-4 text-xs text-muted-foreground">
-          {task.creator && <p>Created by <span className="font-medium text-foreground">{task.creator.name ?? "Unknown"}</span></p>}
+          {task.creator && <p>Created by <span className="font-medium text-foreground">{task.creator.name ?? "a former member"}</span></p>}
           <p>{fmt(task.createdAt)}</p>
+          {task.updatedAt !== task.createdAt && <p>Last updated {fmt(task.updatedAt)}</p>}
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Subtasks tab ───────────────────────────────────────────────────────────
-function SubtasksTab({ taskId, items, setItems, userRole }: {
-  taskId: string; items: SubTask[] | null;
-  setItems: (v: SubTask[]) => void; userRole: string;
+// ─── Subtasks and checklist ─────────────────────────────────────────────────
+
+/** Subtasks and checklist items behave the same; only the field name differs. */
+function ToggleList<T extends { id: string; title: string }>({
+  taskId, part, doneField, noun, can,
+}: {
+  taskId: string;
+  part: "subtasks" | "checklist";
+  doneField: "completed" | "checked";
+  noun: string;
+  can: Abilities;
 }) {
+  const key = taskKey(taskId, part);
+  const { data: items, isPending, isError, refetch } = useTaskPart<T>(taskId, part);
+  const queryClient = useQueryClient();
+  const optimistic = useOptimisticList<T>(key);
   const [newTitle, setNewTitle] = useState("");
-  const canEdit = ["SUPER_ADMIN","OWNER","MANAGER","DEVELOPER"].includes(userRole);
+  const [adding, setAdding] = useState(false);
 
-  async function toggle(id: string, completed: boolean) {
-    await fetch(`/api/tasks/${taskId}/subtasks/${id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ completed: !completed }),
-    });
-    setItems(items!.map(s => s.id === id ? { ...s, completed: !completed } : s));
+  const isDone = (item: T) => Boolean((item as Record<string, unknown>)[doneField]);
+
+  function toggle(item: T) {
+    const next = !isDone(item);
+    void optimistic(
+      (list) => list.map((i) => (i.id === item.id ? { ...i, [doneField]: next } : i)),
+      () => api.patch(`/api/tasks/${taskId}/${part}/${item.id}`, { [doneField]: next })
+    );
   }
 
-  async function remove(id: string) {
-    await fetch(`/api/tasks/${taskId}/subtasks/${id}`, { method: "DELETE" });
-    setItems(items!.filter(s => s.id !== id));
+  function remove(item: T) {
+    void optimistic(
+      (list) => list.filter((i) => i.id !== item.id),
+      () => api.delete(`/api/tasks/${taskId}/${part}/${item.id}`)
+    );
   }
 
-  async function add() {
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
     if (!newTitle.trim()) return;
-    const res = await fetch(`/api/tasks/${taskId}/subtasks`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: newTitle.trim() }),
-    });
-    const j = await res.json();
-    if (j.success) { setItems([...(items ?? []), j.data]); setNewTitle(""); }
+    setAdding(true);
+    try {
+      const item = await api.post<T>(`/api/tasks/${taskId}/${part}`, { title: newTitle.trim() });
+      queryClient.setQueryData<T[]>(key, (list) => [...(list ?? []), item]);
+      setNewTitle("");
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setAdding(false);
+    }
   }
 
-  if (!items) return <Spinner />;
+  if (isPending) return <div className="p-6"><SkeletonList rows={3} /></div>;
+  if (isError) return <div className="p-6"><ErrorState message={`The ${noun} list didn't load.`} onRetry={() => void refetch()} /></div>;
 
-  const done = items.filter(s => s.completed).length;
+  const done = items.filter(isDone).length;
+  const pct = items.length > 0 ? Math.round((done / items.length) * 100) : 0;
 
   return (
-    <div className="p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm font-medium text-foreground">Subtasks</p>
-        <span className="text-xs text-muted-foreground">{done}/{items.length} done</span>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        {items.map((s) => (
-          <div key={s.id} className="flex items-center gap-2 rounded-md border border-border p-2">
-            <button
-              onClick={() => void toggle(s.id, s.completed)}
-              className={cn("flex size-4 shrink-0 items-center justify-center rounded border", s.completed ? "border-primary bg-primary text-primary-foreground" : "border-border")}
-            >
-              {s.completed && <Check className="size-2.5" />}
-            </button>
-            <span className={cn("flex-1 text-sm", s.completed && "line-through text-muted-foreground")}>{s.title}</span>
-            {canEdit && (
-              <button onClick={() => void remove(s.id)} className="text-muted-foreground hover:text-destructive">
-                <Trash2 className="size-3.5" />
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {canEdit && (
-        <div className="mt-3 flex gap-2">
-          <Input className="h-8 text-sm" placeholder="Add subtask…" value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") void add(); }}
-          />
-          <Button size="sm" className="h-8" onClick={() => void add()} disabled={!newTitle.trim()}>Add</Button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Checklist tab ──────────────────────────────────────────────────────────
-function ChecklistTab({ taskId, items, setItems, userRole }: {
-  taskId: string; items: ChecklistItem[] | null;
-  setItems: (v: ChecklistItem[]) => void; userRole: string;
-}) {
-  const [newTitle, setNewTitle] = useState("");
-  const canEdit = ["SUPER_ADMIN","OWNER","MANAGER","DEVELOPER"].includes(userRole);
-
-  async function toggle(id: string, checked: boolean) {
-    await fetch(`/api/tasks/${taskId}/checklist/${id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ checked: !checked }),
-    });
-    setItems(items!.map(c => c.id === id ? { ...c, checked: !checked } : c));
-  }
-
-  async function remove(id: string) {
-    await fetch(`/api/tasks/${taskId}/checklist/${id}`, { method: "DELETE" });
-    setItems(items!.filter(c => c.id !== id));
-  }
-
-  async function add() {
-    if (!newTitle.trim()) return;
-    const res = await fetch(`/api/tasks/${taskId}/checklist`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: newTitle.trim() }),
-    });
-    const j = await res.json();
-    if (j.success) { setItems([...(items ?? []), j.data]); setNewTitle(""); }
-  }
-
-  if (!items) return <Spinner />;
-
-  const checked = items.filter(c => c.checked).length;
-  const pct = items.length > 0 ? Math.round((checked / items.length) * 100) : 0;
-
-  return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="mb-4">
         <div className="mb-1.5 flex items-center justify-between text-sm">
-          <span className="font-medium text-foreground">Checklist</span>
-          <span className="text-xs text-muted-foreground">{checked}/{items.length} · {pct}%</span>
+          <span className="font-medium text-foreground capitalize">{part === "subtasks" ? "Subtasks" : "Checklist"}</span>
+          <span className="text-xs tabular-nums text-muted-foreground">{done}/{items.length} done</span>
         </div>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        {items.map((c) => (
-          <div key={c.id} className="flex items-center gap-2 rounded-md border border-border p-2">
-            <button
-              onClick={() => void toggle(c.id, c.checked)}
-              className={cn("flex size-4 shrink-0 items-center justify-center rounded border", c.checked ? "border-primary bg-primary text-primary-foreground" : "border-border")}
-            >
-              {c.checked && <Check className="size-2.5" />}
-            </button>
-            <span className={cn("flex-1 text-sm", c.checked && "line-through text-muted-foreground")}>{c.title}</span>
-            {canEdit && (
-              <button onClick={() => void remove(c.id)} className="text-muted-foreground hover:text-destructive">
-                <Trash2 className="size-3.5" />
-              </button>
-            )}
+        {items.length > 0 && (
+          <div role="progressbar" aria-label={`${pct}% done`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
           </div>
-        ))}
+        )}
       </div>
 
-      {canEdit && (
-        <div className="mt-3 flex gap-2">
-          <Input className="h-8 text-sm" placeholder="Add item…" value={newTitle}
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {can.edit ? `No ${noun}s yet. Add the first one below.` : `No ${noun}s.`}
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {items.map((item) => (
+            <li key={item.id} className="flex items-center gap-2 rounded-md border border-border p-2">
+              <button
+                role="checkbox"
+                aria-checked={isDone(item)}
+                aria-label={item.title}
+                disabled={!can.edit}
+                onClick={() => toggle(item)}
+                className={cn(
+                  "flex size-4 shrink-0 items-center justify-center rounded border disabled:cursor-default",
+                  isDone(item) ? "border-primary bg-primary text-primary-foreground" : "border-border"
+                )}
+              >
+                {isDone(item) && <Check className="size-3" />}
+              </button>
+              <span className={cn("flex-1 text-sm", isDone(item) && "text-muted-foreground line-through")}>{item.title}</span>
+              {can.edit && (
+                <button onClick={() => remove(item)} aria-label={`Delete "${item.title}"`} className="rounded p-1 text-muted-foreground hover:text-destructive">
+                  <Trash2 className="size-3.5" />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {can.edit && (
+        <form onSubmit={add} className="mt-3 flex gap-2">
+          <Input
+            aria-label={`New ${noun}`}
+            className="h-8 text-sm"
+            placeholder={`Add ${noun}…`}
+            maxLength={200}
+            value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") void add(); }}
           />
-          <Button size="sm" className="h-8" onClick={() => void add()} disabled={!newTitle.trim()}>Add</Button>
-        </div>
+          <Button type="submit" size="sm" className="h-8" disabled={!newTitle.trim() || adding}>Add</Button>
+        </form>
       )}
     </div>
   );
+}
+
+function SubtasksTab({ taskId, can }: { taskId: string; can: Abilities }) {
+  return <ToggleList<SubTask> taskId={taskId} part="subtasks" doneField="completed" noun="subtask" can={can} />;
+}
+
+function ChecklistTab({ taskId, can }: { taskId: string; can: Abilities }) {
+  return <ToggleList<ChecklistItem> taskId={taskId} part="checklist" doneField="checked" noun="item" can={can} />;
 }
 
 // ─── Comments tab ───────────────────────────────────────────────────────────
-function CommentsTab({ taskId, items, setItems, currentUserId, userRole }: {
-  taskId: string; items: Comment[] | null;
-  setItems: (v: Comment[]) => void; currentUserId: string; userRole: string;
-}) {
+function CommentsTab({ taskId, currentUserId, can }: { taskId: string; currentUserId: string; can: Abilities }) {
+  const key = taskKey(taskId, "comments");
+  const { data: items, isPending, isError, refetch } = useTaskPart<Comment>(taskId, "comments");
+  const queryClient = useQueryClient();
+  const optimistic = useOptimisticList<Comment>(key);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -553,182 +600,217 @@ function CommentsTab({ taskId, items, setItems, currentUserId, userRole }: {
   async function send() {
     if (!draft.trim()) return;
     setSending(true);
-    const res = await fetch(`/api/tasks/${taskId}/comments`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: draft.trim() }),
-    });
-    const j = await res.json();
-    if (j.success) {
-      setItems([...(items ?? []), j.data]);
+    try {
+      const comment = await api.post<Comment>(`/api/tasks/${taskId}/comments`, { content: draft.trim() });
+      queryClient.setQueryData<Comment[]>(key, (list) => [...(list ?? []), comment]);
       setDraft("");
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setSending(false);
     }
-    setSending(false);
   }
 
-  async function remove(id: string) {
-    await fetch(`/api/tasks/${taskId}/comments/${id}`, { method: "DELETE" });
-    setItems(items!.filter(c => c.id !== id));
+  function remove(id: string) {
+    void optimistic((list) => list.filter((c) => c.id !== id), () => api.delete(`/api/tasks/${taskId}/comments/${id}`));
   }
 
-  if (!items) return <Spinner />;
-
-  const canDelete = (authorId: string) =>
-    ["SUPER_ADMIN","OWNER","MANAGER"].includes(userRole) || authorId === currentUserId;
+  if (isPending) return <div className="p-6"><SkeletonList rows={3} /></div>;
+  if (isError) return <div className="p-6"><ErrorState message="Comments didn't load." onRetry={() => void refetch()} /></div>;
 
   return (
-    <div className="flex flex-col" style={{ height: "420px" }}>
-      <div className="flex-1 overflow-y-auto p-6">
-        {items.length === 0 && <p className="text-sm italic text-muted-foreground">No comments yet. Be the first!</p>}
-        {items.map((c) => {
-          const initials = (c.author.name ?? "?").split(" ").map(p=>p[0]).slice(0,2).join("").toUpperCase();
-          return (
-            <div key={c.id} className="mb-4 flex gap-3">
-              <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-medium text-accent-foreground">
-                {initials}
-              </div>
-              <div className="flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xs font-medium text-foreground">{c.author.name ?? "Unknown"}</span>
-                  <span className="text-xs text-muted-foreground">{fmt(c.createdAt)}</span>
+    <div className="flex h-[420px] flex-col">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+        {items.length === 0 && <p className="text-sm text-muted-foreground">No comments yet.</p>}
+        <ul>
+          {items.map((c) => {
+            const initials = (c.author.name ?? "?").split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
+            const canDelete = can.moderate || c.author.id === currentUserId;
+            return (
+              <li key={c.id} className="mb-4 flex gap-3">
+                <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-medium text-accent-foreground">
+                  {initials}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-xs font-medium text-foreground">{c.author.name ?? "Former member"}</span>
+                    <time dateTime={c.createdAt} className="text-xs text-muted-foreground">{fmt(c.createdAt)}</time>
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap break-words text-sm text-foreground">{c.content}</p>
                 </div>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{c.content}</p>
-              </div>
-              {canDelete(c.author.id) && (
-                <button onClick={() => void remove(c.id)} className="self-start text-muted-foreground hover:text-destructive">
-                  <Trash2 className="size-3.5" />
-                </button>
-              )}
-            </div>
-          );
-        })}
+                {canDelete && (
+                  <button onClick={() => remove(c.id)} aria-label="Delete comment" className="self-start rounded p-1 text-muted-foreground hover:text-destructive">
+                    <Trash2 className="size-3.5" />
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t border-border p-4">
-        <div className="flex gap-2">
-          <Textarea
-            className="min-h-0 resize-none text-sm"
-            rows={2}
-            placeholder="Write a comment…"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send(); }}
-          />
-          <Button size="sm" disabled={!draft.trim() || sending} onClick={() => void send()} className="self-end">
-            <Send className="size-3.5" />
-          </Button>
-        </div>
-        <p className="mt-1 text-xs text-muted-foreground">Ctrl+Enter to send</p>
-      </div>
+      {can.comment ? (
+        <form className="border-t border-border p-4" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+          <div className="flex gap-2">
+            <Textarea
+              aria-label="Write a comment"
+              className="min-h-0 resize-none text-sm"
+              rows={2}
+              maxLength={5000}
+              placeholder="Write a comment…"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send(); }}
+            />
+            <Button type="submit" size="sm" disabled={!draft.trim() || sending} className="self-end" aria-label="Send comment">
+              <Send className="size-3.5" />
+            </Button>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">Ctrl+Enter to send</p>
+        </form>
+      ) : (
+        <p className="border-t border-border p-4 text-xs text-muted-foreground">Your role can read comments but not add them.</p>
+      )}
     </div>
   );
 }
 
 // ─── Time tab ───────────────────────────────────────────────────────────────
-function TimeTab({ taskId, items, setItems, currentUserId, userRole }: {
-  taskId: string; items: TimeEntry[] | null;
-  setItems: (v: TimeEntry[]) => void; currentUserId: string; userRole: string;
-}) {
+function TimeTab({ taskId, currentUserId, can }: { taskId: string; currentUserId: string; can: Abilities }) {
+  const key = taskKey(taskId, "time");
+  const { data: items, isPending, isError, refetch } = useTaskPart<TimeEntry>(taskId, "time");
+  const queryClient = useQueryClient();
+  const optimistic = useOptimisticList<TimeEntry>(key);
   const [mins, setMins] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
-  async function log() {
-    const m = parseInt(mins);
-    if (!m || m < 1) return;
+  async function log(e: React.FormEvent) {
+    e.preventDefault();
+    const minutes = parseInt(mins, 10);
+    if (!minutes || minutes < 1) return;
     setSaving(true);
-    const res = await fetch(`/api/tasks/${taskId}/time`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ minutes: m, note: note.trim() || null }),
-    });
-    const j = await res.json();
-    if (j.success) { setItems([j.data, ...(items ?? [])]); setMins(""); setNote(""); }
-    setSaving(false);
+    try {
+      const entry = await api.post<TimeEntry>(`/api/tasks/${taskId}/time`, { minutes, note: note.trim() || null });
+      queryClient.setQueryData<TimeEntry[]>(key, (list) => [entry, ...(list ?? [])]);
+      setMins("");
+      setNote("");
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setSaving(false);
+    }
   }
 
-  async function remove(id: string) {
-    await fetch(`/api/tasks/${taskId}/time/${id}`, { method: "DELETE" });
-    setItems(items!.filter(e => e.id !== id));
+  function remove(id: string) {
+    void optimistic((list) => list.filter((e) => e.id !== id), () => api.delete(`/api/tasks/${taskId}/time/${id}`));
   }
 
-  if (!items) return <Spinner />;
+  if (isPending) return <div className="p-6"><SkeletonList rows={3} /></div>;
+  if (isError) return <div className="p-6"><ErrorState message="Time entries didn't load." onRetry={() => void refetch()} /></div>;
 
   const totalMins = items.reduce((sum, e) => sum + e.minutes, 0);
-  const canDelete = (userId: string) =>
-    ["SUPER_ADMIN","OWNER","MANAGER"].includes(userRole) || userId === currentUserId;
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="mb-4 rounded-lg bg-accent px-4 py-3">
         <p className="text-xs text-muted-foreground">Total time logged</p>
-        <p className="text-2xl font-semibold text-foreground">{fmtMins(totalMins)}</p>
+        <p className="text-2xl font-semibold tabular-nums text-foreground">{fmtMins(totalMins)}</p>
       </div>
 
-      <div className="mb-4 flex gap-2">
-        <Input className="h-8 w-24 text-sm" type="number" min={1} placeholder="Minutes"
-          value={mins} onChange={(e) => setMins(e.target.value)} />
-        <Input className="h-8 flex-1 text-sm" placeholder="Note (optional)"
-          value={note} onChange={(e) => setNote(e.target.value)} />
-        <Button size="sm" className="h-8" disabled={!mins || saving} onClick={() => void log()}>Log</Button>
-      </div>
+      {can.edit && (
+        <form onSubmit={log} className="mb-4 flex flex-wrap gap-2">
+          <Input
+            aria-label="Minutes"
+            className="h-8 w-28 text-sm"
+            type="number"
+            min={1}
+            max={1440}
+            placeholder="Minutes"
+            value={mins}
+            onChange={(e) => setMins(e.target.value)}
+          />
+          <Input
+            aria-label="Note"
+            className="h-8 min-w-40 flex-1 text-sm"
+            placeholder="What did you work on? (optional)"
+            maxLength={500}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <Button type="submit" size="sm" className="h-8" disabled={!mins || saving}>Log time</Button>
+        </form>
+      )}
 
-      <div className="flex flex-col gap-2">
-        {items.map((e) => (
-          <div key={e.id} className="flex items-start justify-between rounded-md border border-border p-3">
-            <div>
-              <p className="text-sm font-medium text-foreground">{fmtMins(e.minutes)}</p>
-              {e.note && <p className="mt-0.5 text-xs text-muted-foreground">{e.note}</p>}
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {e.user.name ?? "Unknown"} · {fmt(e.createdAt)}
-              </p>
-            </div>
-            {canDelete(e.user.id) && (
-              <button onClick={() => void remove(e.id)} className="text-muted-foreground hover:text-destructive">
-                <Trash2 className="size-3.5" />
-              </button>
-            )}
-          </div>
-        ))}
-        {items.length === 0 && <p className="text-sm italic text-muted-foreground">No time logged yet.</p>}
-      </div>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No time logged yet.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {items.map((e) => (
+            <li key={e.id} className="flex items-start justify-between gap-3 rounded-md border border-border p-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium tabular-nums text-foreground">{fmtMins(e.minutes)}</p>
+                {e.note && <p className="mt-0.5 break-words text-xs text-muted-foreground">{e.note}</p>}
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {e.user.name ?? "Former member"} · {fmt(e.createdAt)}
+                </p>
+              </div>
+              {(can.moderate || e.user.id === currentUserId) && (
+                <button onClick={() => remove(e.id)} aria-label="Delete time entry" className="rounded p-1 text-muted-foreground hover:text-destructive">
+                  <Trash2 className="size-3.5" />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
 
 // ─── Activity tab ───────────────────────────────────────────────────────────
-const ACTION_LABEL: Record<string,string> = {
-  CREATED:"created", UPDATED:"updated", DELETED:"deleted",
-  ARCHIVED:"archived", RESTORED:"restored", INVITED:"invited",
-};
 
-function ActivityTab({ items }: { items: LogEntry[] | null }) {
-  if (!items) return <Spinner />;
-  return (
-    <div className="p-6">
-      {items.length === 0 && <p className="text-sm italic text-muted-foreground">No activity recorded.</p>}
-      <div className="flex flex-col gap-4">
-        {items.map((l) => (
-          <div key={l.id} className="flex items-start gap-3">
-            <div className="mt-0.5 size-2 shrink-0 rounded-full bg-primary" />
-            <div>
-              <p className="text-sm text-foreground">
-                <span className="font-medium">{l.user.name ?? l.user.email}</span>{" "}
-                {ACTION_LABEL[l.action] ?? l.action.toLowerCase()} this task
-              </p>
-              <p className="text-xs text-muted-foreground">{fmt(l.createdAt)}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+/** Turns an audit entry's changed fields into a short sentence. */
+function describe(entry: LogEntry): string {
+  if (entry.action === "CREATED") return "created this task";
+  if (entry.action === "DELETED") return "deleted this task";
+  if (entry.action !== "UPDATED" || !entry.metadata || typeof entry.metadata !== "object") return `${entry.action.toLowerCase()} this task`;
+
+  const m = entry.metadata as Record<string, unknown>;
+  const parts: string[] = [];
+  if (typeof m.status === "string") parts.push(`moved it to ${STATUS_LABEL[m.status] ?? m.status}`);
+  if (typeof m.priority === "string") parts.push(`set priority to ${titleCase(m.priority)}`);
+  if ("assigneeId" in m) parts.push(m.assigneeId ? "reassigned it" : "unassigned it");
+  if ("dueDate" in m) parts.push(m.dueDate ? "changed the due date" : "removed the due date");
+  if (typeof m.title === "string") parts.push("renamed it");
+  if ("description" in m) parts.push("edited the description");
+  return parts.length ? parts.join(", ") : "updated this task";
 }
 
-function Spinner() {
+function ActivityTab({ taskId }: { taskId: string }) {
+  const { data: items, isPending, isError, refetch } = useTaskPart<LogEntry>(taskId, "activity");
+
+  if (isPending) return <div className="p-6"><SkeletonList rows={3} /></div>;
+  if (isError) return <div className="p-6"><ErrorState message="Activity didn't load." onRetry={() => void refetch()} /></div>;
+
   return (
-    <div className="flex items-center justify-center p-12">
-      <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
+    <div className="p-4 sm:p-6">
+      {items.length === 0 && <p className="text-sm text-muted-foreground">No activity recorded.</p>}
+      <ol className="flex flex-col gap-4">
+        {items.map((l) => (
+          <li key={l.id} className="flex items-start gap-3">
+            <span aria-hidden className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" />
+            <div>
+              <p className="text-sm text-foreground">
+                <span className="font-medium">{l.user?.name ?? l.user?.email ?? "Someone"}</span> {describe(l)}
+              </p>
+              <time dateTime={l.createdAt} className="text-xs text-muted-foreground">{fmt(l.createdAt)}</time>
+            </div>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }

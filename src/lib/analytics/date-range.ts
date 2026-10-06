@@ -57,7 +57,7 @@ export function buildBuckets(from: Date, to: Date): { start: Date; end: Date; la
     buckets.push({
       start,
       end: end > to ? to : end,
-      label: start.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      label: start.toLocaleDateString("en-GB", { month: "short", day: "numeric" }),
     });
 
     cursor = end;

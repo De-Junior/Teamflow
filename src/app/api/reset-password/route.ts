@@ -1,63 +1,30 @@
-import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db/prisma";
+import { badRequest, validationFailed } from "@/lib/api/errors";
+import { ok, route } from "@/lib/api/handler";
+import { clientIp, enforce, limits } from "@/lib/api/rate-limit";
+import { parseBody } from "@/lib/api/request";
+import { findValidToken } from "@/services/auth-tokens";
 import { resetPasswordSchema } from "@/validations/auth";
 
-export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    const parsed = resetPasswordSchema.safeParse(body);
+export const POST = route("auth.reset_password", async (req) => {
+  await enforce(`token:${clientIp(req)}`, limits.tokenRedemption);
+  const { token, password } = await parseBody(req, resetPasswordSchema);
 
-    if (!parsed.success) {
-      return NextResponse.json(
-        { success: false, message: parsed.error.issues[0]?.message ?? "Invalid input" },
-        { status: 400 }
-      );
-    }
+  const valid = await findValidToken("reset-password", token);
+  if (!valid) throw badRequest("This reset link is invalid or has expired. Request a new one.");
 
-    const { token, password } = parsed.data;
-    const record = await prisma.verificationToken.findUnique({ where: { token } });
-
-    if (!record || record.expires < new Date()) {
-      return NextResponse.json(
-        { success: false, message: "This reset link is invalid or has expired." },
-        { status: 400 }
-      );
-    }
-
-    // ── Prevent password reuse ────────────────────────────────────────────────
-    const user = await prisma.user.findUnique({
-      where: { email: record.identifier },
-      select: { password: true },
-    });
-
-    if (user?.password) {
-      const sameAsOld = await bcrypt.compare(password, user.password);
-      if (sameAsOld) {
-        return NextResponse.json(
-          { success: false, message: "New password must be different from your current password." },
-          { status: 400 }
-        );
-      }
-    }
-    // ─────────────────────────────────────────────────────────────────────────
-
-    const hashedPassword = await bcrypt.hash(password, 12);
-
-    await prisma.$transaction([
-      prisma.user.update({
-        where: { email: record.identifier },
-        data: { password: hashedPassword },
-      }),
-      prisma.verificationToken.delete({ where: { token } }),
-    ]);
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("[RESET_PASSWORD_ERROR]", error);
-    return NextResponse.json(
-      { success: false, message: "Something went wrong. Please try again." },
-      { status: 500 }
-    );
+  const user = await prisma.user.findUnique({ where: { email: valid.email }, select: { id: true, password: true } });
+  if (!user) throw badRequest("This reset link is invalid or has expired. Request a new one.");
+  if (user.password && (await bcrypt.compare(password, user.password))) {
+    throw validationFailed({ password: "Choose a password different from your current one." });
   }
-}
+
+  // Changing the password also signs out every other device.
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: user.id }, data: { password: await bcrypt.hash(password, 12) } }),
+    prisma.verificationToken.delete({ where: { token: valid.storedToken } }),
+    prisma.activeSession.updateMany({ where: { userId: user.id, revoked: false }, data: { revoked: true } }),
+  ]);
+  return ok({ passwordReset: true });
+});

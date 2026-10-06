@@ -24,13 +24,13 @@ export function RecentProjectsWidget({ projects }: { projects: RecentProject[] }
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-base">Recent projects</CardTitle>
+        <CardTitle className="text-base">Recently updated projects</CardTitle>
         <Link
           href="/projects"
           className="flex items-center gap-1 text-sm text-primary hover:underline"
         >
           View all
-          <ArrowRight className="size-3.5" />
+          <ArrowRight aria-hidden className="size-3.5" />
         </Link>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 pt-0">
@@ -78,7 +78,7 @@ export function RecentProjectsWidget({ projects }: { projects: RecentProject[] }
                   {project.dueDate && (
                     <span>
                       Due{" "}
-                      {new Date(project.dueDate).toLocaleDateString(undefined, {
+                      {new Date(project.dueDate).toLocaleDateString("en-GB", { timeZone: "UTC",
                         month: "short",
                         day: "numeric",
                       })}

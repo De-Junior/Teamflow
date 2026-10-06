@@ -17,6 +17,8 @@ import {
   DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import type { ProjectData } from "./project-card";
+import { toast } from "sonner";
+import { api, errorMessage } from "@/lib/api-client";
 
 // Local schema — accepts "YYYY-MM-DD" from date input (converted to ISO before API call)
 const editSchema = z.object({
@@ -65,13 +67,8 @@ export function EditProjectDialog({
     };
 
     try {
-      const res  = await fetch(`/api/projects/${project.id}`, {
-        method:  "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(body),
-      });
-      const json = await res.json();
-      if (!json.success) { setServerError(json.message); return; }
+      await api.patch(`/api/projects/${project.id}`, body);
+      toast.success("Project updated.");
 
       onUpdated({
         id:          project.id,
@@ -83,8 +80,8 @@ export function EditProjectDialog({
         updatedAt:   new Date().toISOString(),
       });
       onClose();
-    } catch {
-      setServerError("Something went wrong. Please try again.");
+    } catch (err) {
+      setServerError(errorMessage(err));
     } finally {
       setIsSubmitting(false);
     }

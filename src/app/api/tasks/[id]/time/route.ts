@@ -1,37 +1,24 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { jsonError, readJson, requireTaskAccess } from "@/lib/api/task-access";
-import { createTimeEntrySchema, firstIssue } from "@/validations/task-items";
+import { created, ok, route } from "@/lib/api/handler";
+import { parseBody } from "@/lib/api/request";
+import { requireTaskAccess } from "@/lib/api/task-access";
+import { createTimeEntrySchema } from "@/validations/task-items";
 
-type P = { params: Promise<{ id: string }> };
+type Params = { id: string };
+const withUser = { user: { select: { id: true, name: true } } } as const;
 
-export async function GET(_req: Request, { params }: P) {
-  const access = await requireTaskAccess((await params).id);
-  if (!access.ok) return access.response;
+export const GET = route<Params>("time.list", async (_req, { params }) => {
+  const { taskId } = await requireTaskAccess(params.id);
+  return ok(await prisma.timeEntry.findMany({ where: { taskId }, orderBy: { createdAt: "desc" }, include: withUser }));
+});
 
-  const entries = await prisma.timeEntry.findMany({
-    where: { taskId: access.taskId },
-    orderBy: { createdAt: "desc" },
-    include: { user: { select: { id: true, name: true } } },
-  });
-  return NextResponse.json({ success: true, data: entries });
-}
-
-export async function POST(req: Request, { params }: P) {
-  const access = await requireTaskAccess((await params).id, "task:update");
-  if (!access.ok) return access.response;
-
-  const parsed = createTimeEntrySchema.safeParse(await readJson(req));
-  if (!parsed.success) return jsonError(firstIssue(parsed.error), 400);
+export const POST = route<Params>("time.create", async (req, { params }) => {
+  const { actor, taskId } = await requireTaskAccess(params.id, "task:update");
+  const { minutes, note } = await parseBody(req, createTimeEntrySchema);
 
   const entry = await prisma.timeEntry.create({
-    data: {
-      taskId: access.taskId,
-      userId: access.session.user.id,
-      minutes: Math.round(parsed.data.minutes),
-      note: parsed.data.note || null,
-    },
-    include: { user: { select: { id: true, name: true } } },
+    data: { taskId, userId: actor.userId, minutes: Math.round(minutes), note: note || null },
+    include: withUser,
   });
-  return NextResponse.json({ success: true, data: entry }, { status: 201 });
-}
+  return created(entry);
+});

@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useApiQuery } from "@/hooks/use-api-query";
+import { SkeletonList } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/ui/state";
 
 type Task = {
   id: string; title: string; status: string; priority: string;
@@ -20,21 +23,21 @@ const TABS = [
 ] as const;
 
 export function MyTasksPanel() {
-  const [data, setData] = useState<{ upcoming: Task[]; completed: Task[]; overdue: Task[] } | null>(null);
-  const [tab, setTab]   = useState<typeof TABS[number]["id"]>("upcoming");
+  const { data, isPending, isError, refetch } = useApiQuery<{ upcoming: Task[]; completed: Task[]; overdue: Task[] }>(
+    ["me", "tasks"],
+    "/api/users/tasks"
+  );
+  const [tab, setTab] = useState<typeof TABS[number]["id"]>("upcoming");
 
-  useEffect(() => {
-    fetch("/api/users/tasks").then(r => r.json()).then(j => { if (j.success) setData(j.data); });
-  }, []);
-
-  if (!data) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (isPending) return <SkeletonList rows={4} />;
+  if (isError) return <ErrorState message="Your tasks didn't load." onRetry={() => void refetch()} />;
   const list = data[tab];
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex gap-1 border-b border-border">
+      <div role="tablist" aria-label="My tasks" className="flex gap-1 overflow-x-auto border-b border-border">
         {TABS.map(({ id, label }) => (
-          <button key={id} onClick={() => setTab(id)}
+          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
             className={cn(
               "-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors",
               tab === id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
@@ -46,7 +49,9 @@ export function MyTasksPanel() {
       </div>
 
       {list.length === 0 ? (
-        <p className="py-4 text-sm text-muted-foreground">Nothing here.</p>
+        <p className="py-4 text-sm text-muted-foreground">
+          {tab === "overdue" ? "Nothing overdue." : tab === "completed" ? "No completed tasks yet." : "Nothing coming up."}
+        </p>
       ) : (
         <div className="flex flex-col divide-y divide-border">
           {list.map((t) => (
@@ -60,7 +65,7 @@ export function MyTasksPanel() {
               </div>
               {t.dueDate && (
                 <span className="shrink-0 text-xs text-muted-foreground">
-                  {new Date(t.dueDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                  {new Date(t.dueDate).toLocaleDateString("en-GB", { timeZone: "UTC", month: "short", day: "numeric" })}
                 </span>
               )}
             </Link>

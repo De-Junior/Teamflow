@@ -1,67 +1,37 @@
-import { NextResponse } from "next/server";
-import type { Session } from "next-auth";
 import { Role } from "@prisma/client";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
-import { hasPermission, type Permission } from "@/lib/auth/permissions";
+import type { Permission } from "@/lib/auth/permissions";
+import { notFound } from "./errors";
+import { parseId } from "./request";
+import { authorize, requireActor, type Actor } from "./session";
 
 /**
- * Guards for the task sub-resource routes (subtasks, checklist, labels,
- * time entries, comments).
+ * Guard for the task sub-resource routes (subtasks, checklist, labels, time
+ * entries, comments).
  *
  * Those child tables don't carry their own `tenantId`, so tenant isolation is
- * enforced through the parent task: every lookup is filtered by
- * `task: { tenantId }`, which means an ID from another organisation simply
- * resolves to "not found".
- */
-
-export type TaskAccess =
-  | { ok: true; session: Session; tenantId: string; taskId: string }
-  | { ok: false; response: NextResponse };
-
-export function jsonError(message: string, status: number) {
-  return NextResponse.json({ success: false, message }, { status });
-}
-
-/**
- * Authenticates the caller, checks an optional permission, and confirms the
- * task belongs to the caller's tenant.
+ * enforced through the parent task: the task must belong to the caller's
+ * tenant, and every child lookup is then scoped by `taskId`. An id from
+ * another organization resolves to "not found".
  */
 export async function requireTaskAccess(
-  taskId: string,
+  rawTaskId: string,
   permission?: Permission
-): Promise<TaskAccess> {
-  const session = await auth();
-  if (!session?.user?.tenantId) {
-    return { ok: false, response: jsonError("Unauthorized", 401) };
-  }
+): Promise<{ actor: Actor; taskId: string }> {
+  const actor = await requireActor();
+  if (permission) authorize(actor, permission);
 
-  if (permission && !hasPermission(session.user.role as Role, permission)) {
-    return { ok: false, response: jsonError(`Insufficient permissions: requires "${permission}"`, 403) };
-  }
-
-  const tenantId = session.user.tenantId;
+  const taskId = parseId(rawTaskId, "taskId");
   const task = await prisma.task.findFirst({
-    where: { id: taskId, tenantId },
+    where: { id: taskId, tenantId: actor.tenant.tenantId },
     select: { id: true },
   });
-  if (!task) {
-    return { ok: false, response: jsonError("Task not found", 404) };
-  }
+  if (!task) throw notFound("Task");
 
-  return { ok: true, session, tenantId, taskId };
+  return { actor, taskId };
 }
 
 /** True for roles that may moderate other people's comments and time entries. */
 export function canModerate(role: string) {
   return role === Role.SUPER_ADMIN || role === Role.OWNER || role === Role.MANAGER;
-}
-
-/** Parses a JSON body without throwing on malformed input. */
-export async function readJson(req: Request): Promise<unknown> {
-  try {
-    return await req.json();
-  } catch {
-    return null;
-  }
 }

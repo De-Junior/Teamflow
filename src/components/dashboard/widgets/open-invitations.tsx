@@ -25,7 +25,7 @@ export function OpenInvitationsWidget({ invitations }: { invitations: OpenInvita
           className="flex items-center gap-1 text-sm text-primary hover:underline"
         >
           Manage
-          <ArrowRight className="size-3.5" />
+          <ArrowRight aria-hidden className="size-3.5" />
         </Link>
       </CardHeader>
       <CardContent className="flex flex-col gap-2 pt-0">

@@ -1,50 +1,17 @@
-import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/db/prisma";
-import { requirePermission, UnauthorizedError } from "@/lib/auth/permissions";
-import { Role } from "@prisma/client";
 import { z } from "zod";
+import { prisma } from "@/lib/db/prisma";
+import { writeAuditLog } from "@/lib/db/tenant";
+import { ok, route } from "@/lib/api/handler";
+import { parseBody } from "@/lib/api/request";
+import { requirePermission } from "@/lib/api/session";
 
-const schema = z.object({
-  name: z.string().min(1, "Name is required").max(100),
+const renameSchema = z.object({ name: z.string().trim().min(1, "Name is required.").max(100) });
+
+export const PATCH = route("organizations.rename", async (req) => {
+  const actor = await requirePermission("org:manage");
+  const { name } = await parseBody(req, renameSchema);
+
+  await prisma.organization.update({ where: { id: actor.tenant.organizationId }, data: { name } });
+  await writeAuditLog(actor.tenant, { action: "UPDATED", entityType: "Organization", entityId: actor.tenant.organizationId, metadata: { name } });
+  return ok({ name });
 });
-
-export async function PATCH(req: Request) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  }
-
-  try {
-    requirePermission(session.user.role as Role, "org:manage");
-  } catch (error) {
-    if (error instanceof UnauthorizedError) {
-      return NextResponse.json({ success: false, message: error.message }, { status: 403 });
-    }
-    throw error;
-  }
-
-  try {
-    const body   = await req.json();
-    const parsed = schema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json(
-        { success: false, message: parsed.error.issues[0]?.message ?? "Invalid input" },
-        { status: 400 }
-      );
-    }
-
-    await prisma.organization.update({
-      where: { id: session.user.organizationId },
-      data:  { name: parsed.data.name },
-    });
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("[ORG_UPDATE_ERROR]", error);
-    return NextResponse.json(
-      { success: false, message: "Something went wrong. Please try again." },
-      { status: 500 }
-    );
-  }
-}

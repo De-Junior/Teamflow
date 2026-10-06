@@ -1,19 +1,16 @@
-import { NextResponse } from "next/server";
-import { auth }         from "@/lib/auth";
-import { prisma }       from "@/lib/db/prisma";
+import { prisma } from "@/lib/db/prisma";
+import { ok, route } from "@/lib/api/handler";
+import { requireTaskAccess } from "@/lib/api/task-access";
 
-type P = { params: Promise<{ id: string }> };
+type Params = { id: string };
 
-export async function GET(_req: Request, { params }: P) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  const { id: taskId } = await params;
-
+export const GET = route<Params>("tasks.activity", async (_req, { params }) => {
+  const { actor, taskId } = await requireTaskAccess(params.id);
   const logs = await prisma.auditLog.findMany({
-    where:   { tenantId: session.user.tenantId, entityType: "Task", entityId: taskId },
+    where: { tenantId: actor.tenant.tenantId, entityType: "Task", entityId: taskId },
     orderBy: { createdAt: "desc" },
-    take:    50,
-    include: { user: { select: { id: true, name: true, email: true } } },
+    take: 50,
+    select: { id: true, action: true, createdAt: true, metadata: true, user: { select: { name: true, email: true } } },
   });
-  return NextResponse.json({ success: true, data: logs });
-}
+  return ok(logs);
+});

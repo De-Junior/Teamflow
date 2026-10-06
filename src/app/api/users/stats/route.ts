@@ -1,24 +1,18 @@
-import { NextResponse } from "next/server";
-import { auth }         from "@/lib/auth";
-import { prisma }       from "@/lib/db/prisma";
+import { prisma } from "@/lib/db/prisma";
+import { ok, route } from "@/lib/api/handler";
+import { requireActor } from "@/lib/api/session";
 
-export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+export const GET = route("users.stats", async () => {
+  const actor = await requireActor();
+  const { tenantId } = actor.tenant;
+  const userId = actor.userId;
 
-  const userId   = session.user.id;
-  const tenantId = session.user.tenantId;
-
-  const [tasksCompleted, projectsInvolved, commentsCount, filesUploaded] = await Promise.all([
+  const [tasksCompleted, projects, commentsCount, time] = await Promise.all([
     prisma.task.count({ where: { tenantId, assigneeId: userId, status: "DONE" } }),
-    prisma.task.findMany({ where: { tenantId, assigneeId: userId }, select: { projectId: true }, distinct: ["projectId"] })
-      .then(rows => rows.length),
+    prisma.task.groupBy({ by: ["projectId"], where: { tenantId, assigneeId: userId } }),
     prisma.comment.count({ where: { tenantId, authorId: userId } }),
-    prisma.file.count({ where: { tenantId, uploadedById: userId } }),
+    prisma.timeEntry.aggregate({ where: { userId, task: { tenantId } }, _sum: { minutes: true } }),
   ]);
-
-  return NextResponse.json({
-    success: true,
-    data: { tasksCompleted, projectsInvolved, commentsCount, filesUploaded },
-  });
-}
+  const hoursLogged = Math.round(((time._sum.minutes ?? 0) / 60) * 10) / 10;
+  return ok({ tasksCompleted, projectsInvolved: projects.length, commentsCount, hoursLogged });
+});

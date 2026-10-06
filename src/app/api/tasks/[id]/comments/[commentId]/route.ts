@@ -1,22 +1,20 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { canModerate, jsonError, requireTaskAccess } from "@/lib/api/task-access";
+import { forbidden, notFound } from "@/lib/api/errors";
+import { ok, route } from "@/lib/api/handler";
+import { canModerate, requireTaskAccess } from "@/lib/api/task-access";
 
-type P = { params: Promise<{ id: string; commentId: string }> };
+type Params = { id: string; commentId: string };
 
-export async function DELETE(_req: Request, { params }: P) {
-  const { id, commentId } = await params;
-  const access = await requireTaskAccess(id);
-  if (!access.ok) return access.response;
+export const DELETE = route<Params>("comments.delete", async (_req, { params }) => {
+  const { actor, taskId } = await requireTaskAccess(params.id);
 
   const comment = await prisma.comment.findFirst({
-    where: { id: commentId, taskId: access.taskId, tenantId: access.tenantId },
+    where: { id: params.commentId, taskId, tenantId: actor.tenant.tenantId },
+    select: { id: true, authorId: true },
   });
-  if (!comment) return jsonError("Comment not found.", 404);
-
-  const { user } = access.session;
-  if (!canModerate(user.role) && comment.authorId !== user.id) return jsonError("Forbidden.", 403);
+  if (!comment) throw notFound("Comment");
+  if (!canModerate(actor.role) && comment.authorId !== actor.userId) throw forbidden("You can only delete your own comments.");
 
   await prisma.comment.delete({ where: { id: comment.id } });
-  return NextResponse.json({ success: true });
-}
+  return ok({ id: comment.id });
+});

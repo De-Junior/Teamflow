@@ -12,6 +12,18 @@ import {
 } from "@/components/ui/select";
 import { FolderKanban, Search, Trash2, Archive, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { api } from "@/lib/api-client";
+
+/** Runs one request per id and reports how many failed, instead of failing silently. */
+async function forEachProject(ids: string[], request: (id: string) => Promise<unknown>) {
+  const results = await Promise.allSettled(ids.map(request));
+  const succeeded = ids.filter((_, i) => results[i].status === "fulfilled");
+  return { succeeded: new Set(succeeded), failed: ids.length - succeeded.length };
+}
+
+const plural = (n: number) => `${n} project${n === 1 ? "" : "s"}`;
 
 const PAGE_SIZE = 12;
 
@@ -29,6 +41,7 @@ export function ProjectsClient({
   canArchive: boolean;
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
 
   const [projects,     setProjects]     = useState<ProjectData[]>(initial);
   const [search,       setSearch]       = useState("");
@@ -133,38 +146,38 @@ export function ProjectsClient({
 
   // ── Bulk actions ─────────────────────────────────────────────────────────
   async function bulkDelete() {
-    if (!confirm(
-      `Delete ${selected.size} project${selected.size > 1 ? "s" : ""}? This cannot be undone.`
-    )) return;
+    const ok = await confirm({
+      title: `Delete ${plural(selected.size)}?`,
+      description: "Their tasks will be deleted too. This can't be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     setBulkLoading(true);
     try {
-      await Promise.all([...selected].map((id) =>
-        fetch(`/api/projects/${id}`, { method: "DELETE" })
-      ));
-      setProjects((prev) => prev.filter((p) => !selected.has(p.id)));
+      const { succeeded, failed } = await forEachProject([...selected], (id) => api.delete(`/api/projects/${id}`));
+      setProjects((prev) => prev.filter((p) => !succeeded.has(p.id)));
+      if (succeeded.size) toast.success(`Deleted ${plural(succeeded.size)}.`);
+      if (failed) toast.error(`${plural(failed)} couldn't be deleted.`);
       clearSelection();
       router.refresh();
-    } catch { /* silent */ }
-    finally { setBulkLoading(false); }
+    } finally { setBulkLoading(false); }
   }
 
   async function bulkArchive() {
     setBulkLoading(true);
     try {
-      await Promise.all([...selected].map((id) =>
-        fetch(`/api/projects/${id}`, {
-          method:  "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ status: "ARCHIVED" }),
-        })
-      ));
-      setProjects((prev) =>
-        prev.map((p) => selected.has(p.id) ? { ...p, status: "ARCHIVED" } : p)
+      const { succeeded, failed } = await forEachProject([...selected], (id) =>
+        api.patch(`/api/projects/${id}`, { status: "ARCHIVED" })
       );
+      setProjects((prev) =>
+        prev.map((p) => succeeded.has(p.id) ? { ...p, status: "ARCHIVED" } : p)
+      );
+      if (succeeded.size) toast.success(`Archived ${plural(succeeded.size)}.`);
+      if (failed) toast.error(`${plural(failed)} couldn't be archived.`);
       clearSelection();
       router.refresh();
-    } catch { /* silent */ }
-    finally { setBulkLoading(false); }
+    } finally { setBulkLoading(false); }
   }
 
   return (

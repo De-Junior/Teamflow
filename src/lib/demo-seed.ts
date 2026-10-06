@@ -344,6 +344,7 @@ export async function resetDemoWorkspace() {
           creatorId: me.id,
           createdAt,
           updatedAt,
+          completedAt: t.status === TaskStatus.DONE ? updatedAt : null,
           labels: t.labels ? { create: t.labels } : undefined,
           subtasks: t.subtasks
             ? { create: t.subtasks.map(([title, completed], i) => ({ title, completed, position: i })) }
