@@ -1,34 +1,20 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { jsonError, readJson, requireTaskAccess } from "@/lib/api/task-access";
-import { createItemSchema, firstIssue } from "@/validations/task-items";
+import { created, ok, route } from "@/lib/api/handler";
+import { parseBody } from "@/lib/api/request";
+import { requireTaskAccess } from "@/lib/api/task-access";
+import { createItemSchema } from "@/validations/task-items";
 
-type P = { params: Promise<{ id: string }> };
+type Params = { id: string };
 
-export async function GET(_req: Request, { params }: P) {
-  const access = await requireTaskAccess((await params).id);
-  if (!access.ok) return access.response;
+export const GET = route<Params>("checklist.list", async (_req, { params }) => {
+  const { taskId } = await requireTaskAccess(params.id);
+  return ok(await prisma.checklistItem.findMany({ where: { taskId }, orderBy: { position: "asc" } }));
+});
 
-  const items = await prisma.checklistItem.findMany({
-    where: { taskId: access.taskId },
-    orderBy: { position: "asc" },
-  });
-  return NextResponse.json({ success: true, data: items });
-}
+export const POST = route<Params>("checklist.create", async (req, { params }) => {
+  const { taskId } = await requireTaskAccess(params.id, "task:update");
+  const { title } = await parseBody(req, createItemSchema);
 
-export async function POST(req: Request, { params }: P) {
-  const access = await requireTaskAccess((await params).id, "task:update");
-  if (!access.ok) return access.response;
-
-  const parsed = createItemSchema.safeParse(await readJson(req));
-  if (!parsed.success) return jsonError(firstIssue(parsed.error), 400);
-
-  const last = await prisma.checklistItem.findFirst({
-    where: { taskId: access.taskId },
-    orderBy: { position: "desc" },
-  });
-  const item = await prisma.checklistItem.create({
-    data: { taskId: access.taskId, title: parsed.data.title, position: (last?.position ?? -1) + 1 },
-  });
-  return NextResponse.json({ success: true, data: item }, { status: 201 });
-}
+  const last = await prisma.checklistItem.findFirst({ where: { taskId }, orderBy: { position: "desc" } });
+  return created(await prisma.checklistItem.create({ data: { taskId, title, position: (last?.position ?? -1) + 1 } }));
+});

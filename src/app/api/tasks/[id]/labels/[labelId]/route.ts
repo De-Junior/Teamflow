@@ -1,15 +1,13 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { jsonError, requireTaskAccess } from "@/lib/api/task-access";
+import { notFound } from "@/lib/api/errors";
+import { ok, route } from "@/lib/api/handler";
+import { requireTaskAccess } from "@/lib/api/task-access";
 
-type P = { params: Promise<{ id: string; labelId: string }> };
+type Params = { id: string; labelId: string };
 
-export async function DELETE(_req: Request, { params }: P) {
-  const { id, labelId } = await params;
-  const access = await requireTaskAccess(id, "task:update");
-  if (!access.ok) return access.response;
-
-  const deleted = await prisma.taskLabel.deleteMany({ where: { id: labelId, taskId: access.taskId } });
-  if (deleted.count === 0) return jsonError("Label not found.", 404);
-  return NextResponse.json({ success: true });
-}
+export const DELETE = route<Params>("labels.delete", async (_req, { params }) => {
+  const { taskId } = await requireTaskAccess(params.id, "task:update");
+  const { count } = await prisma.taskLabel.deleteMany({ where: { id: params.labelId, taskId } });
+  if (count === 0) throw notFound("Label");
+  return ok({ id: params.labelId });
+});

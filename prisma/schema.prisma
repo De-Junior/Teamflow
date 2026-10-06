@@ -296,6 +296,8 @@ model Task {
   status      TaskStatus @default(BACKLOG)
   priority    Priority   @default(MEDIUM)
   dueDate     DateTime?
+  /// Set when the task enters DONE, cleared when it leaves; analytics reads this, not updatedAt
+  completedAt DateTime?
   position    Int        @default(0) // for Kanban ordering
   assigneeId  String?
   creatorId   String
@@ -312,10 +314,13 @@ model Task {
   timeEntries    TimeEntry[]
   labels         TaskLabel[]
 
-  @@index([tenantId])
-  @@index([projectId])
+  // "My open tasks" and workload views filter by tenant, assignee and status
+  @@index([tenantId, assigneeId, status])
+  // Due-soon and overdue lists
+  @@index([tenantId, dueDate])
+  // A project board loads its tasks by column, in board order
+  @@index([projectId, status, position])
   @@index([assigneeId])
-  @@index([status])
 }
 
 // ─── Task Labels ──────────────────────────────────────────────────────────────
@@ -395,6 +400,7 @@ model Notification {
 
   @@index([tenantId])
   @@index([userId, read])
+  @@index([userId, createdAt])
 }
 
 // ─── Audit Log ────────────────────────────────────────────────────────────────
@@ -415,7 +421,8 @@ model AuditLog {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id])
 
-  @@index([tenantId])
+  // Activity feeds read an organization's newest entries first
+  @@index([tenantId, createdAt])
   @@index([organizationId])
   @@index([userId])
   @@index([entityType, entityId])
@@ -564,4 +571,13 @@ model EmailLog {
 
   @@index([tenantId])
   @@index([to])
+}
+/// Fixed-window counters for rate-limited actions (sign-in, sign-up,
+/// password reset, invitations, AI analysis). See src/lib/api/rate-limit.ts.
+model RateLimit {
+  key     String   @id
+  count   Int
+  resetAt DateTime
+
+  @@index([resetAt])
 }
